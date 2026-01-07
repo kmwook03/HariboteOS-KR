@@ -1,9 +1,9 @@
 ; haribote-os
 ; TAB=4
 
-BOTPAK	EQU	0x00280000
+BOTPAK	EQU	0x00280000			; Bootpack load location
 DSKCAC	EQU	0x00100000
-DSKCAC0	EQU	0x00008000
+DSKCAC0	EQU	0x00008000			; disk cache loaction (real mode)
 
 ; BOOT INFO
 CYLS	EQU	0x0ff0	; Boot sector will choose
