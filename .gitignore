@@ -17,3 +17,4 @@ tolset/
 out/
 *.iso
 graphics/
+Makefile.orig
