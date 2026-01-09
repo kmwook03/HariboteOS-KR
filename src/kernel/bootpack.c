@@ -2,23 +2,15 @@
 #include <stdio.h> // This is not standard C library. it was created by Kawai Hidemi for Haribote OS.
 #include "../include/bootpack.h"
 
-struct MOUSE_DEC {
-    unsigned char buf[3], phase;
-    int x, y, btn;
-};
-
-extern struct FIFO8 keyfifo, mousefifo;
-void enable_mouse(struct MOUSE_DEC *mdec);
-void init_keyboard(void);
-int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat);
-
 // main function(entry point)
 void HariMain(void)
 {
     struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO; // load boot info from memory address 0x0ff0 (set in boot/asmhead.nas)
     char s[40], mcursor[256], keybuf[32], mousebuf[128];
     int mx, my, i;
+    unsigned int memtotal;
     struct MOUSE_DEC mdec;
+    struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 
     init_gdtidt();
     init_pic();
@@ -30,6 +22,11 @@ void HariMain(void)
     io_out8(PIC1_IMR, 0xef); // 11101111 : allow mouse(IRQ12)
 
     init_keyboard();
+    enable_mouse(&mdec);
+    memtotal = memtest(0x00400000, 0xbfffffff);
+    memman_init(memman);
+    memman_free(memman, 0x00001000, 0x0009e000);    // free 0x00001000 - 0x0009efff
+    memman_free(memman, 0x00400000, memtotal - 0x00400000); // free 0x00400000 - end of memory
 
     init_palette();
     init_screen8(binfo->vram, binfo->scrnx, binfo->scrny);
@@ -40,7 +37,8 @@ void HariMain(void)
     sprintf(s, "(%d, %d)", mx, my);
     putfonts8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, s);
 
-    enable_mouse(&mdec);
+    sprintf(s, "memory %dMB free : %dKB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
+    putfonts8_asc(binfo->vram, binfo->scrnx, 0, 32, COL8_FFFFFF, s);
 
     for (;;) {
         io_cli();
@@ -94,86 +92,4 @@ void HariMain(void)
             }
         }
     }
-}
-
-#define PORT_KEYDAT             0x0060
-#define PORT_KEYSTA             0x0064
-#define PORT_KEYCMD             0x0064
-#define KEYSTA_SEND_NOTREADY    0x02
-#define KEYCMD_WRITE_MODE       0x60
-#define KBC_MODE                0x47
-
-void wait_KBC_sendready(void)
-{
-    for (;;) {
-        if ((io_in8(PORT_KEYSTA) & KEYSTA_SEND_NOTREADY) == 0) { 
-            return;
-        }
-    }
-}
-
-void init_keyboard(void)
-{
-    wait_KBC_sendready();
-    io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);
-    wait_KBC_sendready();
-    io_out8(PORT_KEYDAT, KBC_MODE);
-    return;
-}
-
-#define KEYCMD_SENDTO_MOUSE    0xd4
-#define MOUSECMD_ENABLE        0xf4
-
-void enable_mouse(struct MOUSE_DEC *mdec)
-{
-    wait_KBC_sendready();
-    io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
-    wait_KBC_sendready();
-    io_out8(PORT_KEYDAT, MOUSECMD_ENABLE);
-    // if good, ACK(0xfa) will be sent from mouse
-    mdec->phase = 0; // waiting for ACK(0xfa)
-    return;
-}
-
-int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat)
-{
-    if (mdec->phase == 0) {
-        // receive ACK(0xfa)
-        if (dat == 0xfa) {
-            mdec->phase = 1;
-        }
-        return 0;
-    }
-    if (mdec->phase == 1) {
-        // waiting for first byte of data
-        if ((dat & 0xc8) == 0x08) {
-            // valid first byte
-            mdec->buf[0] = dat;
-            mdec->phase = 2;
-        }
-        return 0;
-    }
-    if (mdec->phase == 2) {
-        // waiting for second byte of data
-        mdec->buf[1] = dat; // store second byte
-        mdec->phase = 3;
-        return 0;
-    }
-    if (mdec->phase == 3) {
-        // waiting for third byte of data
-        mdec->buf[2] = dat;
-        mdec->phase = 1;
-        mdec->btn = mdec->buf[0] & 0x07;
-        mdec->x = mdec->buf[1];
-        mdec->y = mdec->buf[2];
-        if ((mdec->buf[0] & 0x10) != 0) {
-            mdec->x |= 0xffffff00;
-        }
-        if ((mdec->buf[0] & 0x20) != 0) {
-            mdec->y |= 0xffffff00;
-        }
-        mdec->y = -mdec->y; // y axis is inverted
-        return 1;
-    }
-    return -1; // should not occur
 }
