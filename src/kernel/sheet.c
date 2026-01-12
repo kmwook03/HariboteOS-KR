@@ -142,7 +142,7 @@ void sheet_updown(struct SHEET *sht, int height)
         // move down
         if (height >= 0) {
             // in between
-            for (h = old; h > height; h--) {
+            for (h=old; h>height; h--) {
                 ctl->sheets[h] = ctl->sheets[h - 1];
                 ctl->sheets[h]->height = h;
             }
@@ -152,7 +152,7 @@ void sheet_updown(struct SHEET *sht, int height)
         } else {
             // hide
             if (ctl->top > old) {
-                for (h = old; h < ctl->top; h++) {
+                for (h=old; h<ctl->top; h++) {
                     ctl->sheets[h] = ctl->sheets[h + 1];
                     ctl->sheets[h]->height = h;
                 }
@@ -165,14 +165,14 @@ void sheet_updown(struct SHEET *sht, int height)
         // move up
         if (old >= 0) {
             // in between
-            for (h = old; h < height; h++) {
+            for (h=old; h<height; h++) {
                 ctl->sheets[h] = ctl->sheets[h + 1];
                 ctl->sheets[h]->height = h;
             }
             ctl->sheets[height] = sht;
         } else {
             // from hidden to visible
-            for (h = ctl->top; h >= height; h--) {
+            for (h=ctl->top; h>=height; h--) {
                 ctl->sheets[h + 1] = ctl->sheets[h];
                 ctl->sheets[h + 1]->height = h + 1;
             }

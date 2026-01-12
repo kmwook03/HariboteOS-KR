@@ -18,22 +18,25 @@ void load_gdtr(int limit, int addr);
 void load_idtr(int limit, int addr);
 int load_cr0(void);
 void store_cr0(int cr0);
+void load_tr(int tr);
 void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int memtest_sub(unsigned int start, unsigned int end);
+void farjmp(int eip, int cs);
 
 // fifo.c
-struct FIFO8 {
-    unsigned char *buf;
+struct FIFO32 {
+    int *buf;
     int p, q, size, free, flags;
+    struct TASK *task;
 };
 
-void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf);
-int fifo8_put(struct FIFO8 *fifo, unsigned char data);
-int fifo8_get(struct FIFO8 *fifo);
-int fifo8_status(struct FIFO8 *fifo);
+void fifo32_init(struct FIFO32 *fifo, int size, int *buf, struct TASK *task);
+int fifo32_put(struct FIFO32 *fifo, int data);
+int fifo32_get(struct FIFO32 *fifo);
+int fifo32_status(struct FIFO32 *fifo);
 
 // graphic.c
 void init_palette(void);
@@ -94,6 +97,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 #define LIMIT_BOTPAK    0x0007ffff
 #define AR_DATA32_RW    0x4092
 #define AR_CODE32_ER    0x409a
+#define AR_TSS32        0x0089
 #define AR_INTGATE32    0x008e
 
 // int.c
@@ -118,9 +122,7 @@ void inthandler2c(int *esp);
 // keyboard.c
 void inthandler21(int *esp);
 void wait_KBC_sendready(void);
-void init_keyboard(void);
-
-extern struct FIFO8 keyfifo;
+void init_keyboard(struct FIFO32 *fifo, int data0);
 
 #define PORT_KEYDAT    0x0060
 #define PORT_KEYCMD    0x0064
@@ -132,9 +134,8 @@ struct MOUSE_DEC {
 };
 
 void inthandler2c(int *esp);
-void enable_mouse(struct MOUSE_DEC *mdec);
+void enable_mouse(struct FIFO32 *fifo, int data0, struct MOUSE_DEC *mdec);
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat);
-extern struct FIFO8 mousefifo;
 
 // memory.c
 #define MEMMAN_FREES  4090  // max number of free memory blocks
@@ -184,20 +185,60 @@ void sheet_free(struct SHEET *sht);
 #define MAX_TIMER    500
 
 struct TIMER {
+    struct TIMER *next;
     unsigned int timeout, flags;
-    struct FIFO8 *fifo;
-    unsigned char data;
+    struct FIFO32 *fifo;
+    int data;
 };
 
 struct TIMERCTL {
 	unsigned int count, next, using;
-	struct TIMER *timers[MAX_TIMER];
+	struct TIMER *t0;
     struct TIMER timers0[MAX_TIMER];
 };
 extern struct TIMERCTL timerctl;
 void init_pit(void);
 struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *timer);
-void timer_init(struct TIMER *timer, struct FIFO8 *fifo, unsigned char data);
+void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data);
 void timer_settime(struct TIMER *timer, unsigned int timeout);
 void inthandler20(int *esp);
+
+// mtask.c
+#define MAX_TASKS   1000 // max number of tasks
+#define TASK_GDT0   3    // first TSS GDT number
+#define MAX_TASKS_LV  100 // max number of tasks per level
+#define MAX_TASKLEVELS  10  // max number
+
+struct TSS32 {
+	int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;
+	int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi;
+	int es, cs, ss, ds, fs, gs;
+	int ldtr, iomap;
+};
+
+struct TASK {
+    int sel, flags;  // selector and status
+    int level, priority;
+    struct TSS32 tss;
+};
+
+struct TASKLEVEL {
+    int running; // number of running tasks
+    int now; // current running task index
+    struct TASK *tasks[MAX_TASKS_LV];
+};
+
+struct TASKCTL {
+    int now_lv;
+    char lv_change;
+    struct TASKLEVEL level[MAX_TASKLEVELS];
+    struct TASK tasks0[MAX_TASKS];
+};
+
+extern struct TIMER *task_timer;
+struct TASK *task_init(struct MEMMAN *memman);
+struct TASK *task_alloc(void);
+void task_run(struct TASK *task, int level, int priority);
+void task_switch(void);
+void task_sleep(struct TASK *task);
