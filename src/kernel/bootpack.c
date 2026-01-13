@@ -2,16 +2,8 @@
 
 #include "../include/bootpack.h"
 #include <stdio.h>
-#include <string.h>
 
 #define KEYCMD_LED		0xed
-
-void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char act);
-void putfonts8_asc_sht(struct SHEET *sht, int x, int y, int c, int b, char *s, int l);
-void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c);
-void make_wtitle8(unsigned char *buf, int xsize, char *title, char act);
-void console_task(struct SHEET *sht, int memtotal);
-int cons_newline(int cursor_y, struct SHEET *sheet);
 
 void HariMain(void)
 {
@@ -24,6 +16,10 @@ void HariMain(void)
 	struct MOUSE_DEC mdec;
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct SHTCTL *shtctl;
+	unsigned char *buf_back, buf_mouse[256], *buf_win, *buf_cons;
+	struct SHEET *sht_back, *sht_mouse, *sht_win, *sht_cons;
+	struct TASK *task_a, *task_cons;
+	struct TIMER *timer;
 
 	static char keytable0[0x80] = {
 		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0,   0,
@@ -47,11 +43,6 @@ void HariMain(void)
 		0,   0,   0,   '_', 0,   0,   0,   0,   0,   0,   0,   0,   0,   '|', 0,   0
 	};
 	int key_to = 0, key_shift = 0, key_leds = (binfo->leds >> 4) & 7, keycmd_wait = -1;
-
-	unsigned char *buf_back, buf_mouse[256], *buf_win, *buf_cons;
-	struct SHEET *sht_back, *sht_mouse, *sht_win, *sht_cons;
-	struct TASK *task_a, *task_cons;
-	struct TIMER *timer;
 
 	init_gdtidt();
 	init_pic();
@@ -108,8 +99,8 @@ void HariMain(void)
 	task_run(task_cons, 2, 2);
 
     // sht_win
-	sht_win   = sheet_alloc(shtctl);
-	buf_win   = (unsigned char *) memman_alloc_4k(memman, 160 * 52);
+	sht_win = sheet_alloc(shtctl);
+	buf_win = (unsigned char *) memman_alloc_4k(memman, 160 * 52);
 	sheet_setbuf(sht_win, buf_win, 144, 52, -1);
 	make_window8(buf_win, 144, 52, "task_a", 1);
 	make_textbox8(sht_win, 8, 28, 128, 16, COL8_FFFFFF);

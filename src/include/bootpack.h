@@ -26,6 +26,8 @@ void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int memtest_sub(unsigned int start, unsigned int end);
 void farjmp(int eip, int cs);
+void farcall(int eip, int cs);
+void asm_hrb_api(void);
 
 // fifo.c
 struct FIFO32 {
@@ -252,8 +254,22 @@ void putfonts8_asc_sht(struct SHEET *sht, int x, int y, int c, int b, char *s, i
 void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c);
 
 // console.c
+struct CONSOLE {
+    struct SHEET *sht;
+    int cur_x, cur_y, cur_c;
+};
 void console_task(struct SHEET *sht, int memtotal);
-int cons_newline(int cursor_y, struct SHEET *sheet);
+void cons_putchar(struct CONSOLE *cons, int chr, char move);
+void cons_putstr0 (struct CONSOLE *cons, char *s);
+void cons_putstr1(struct CONSOLE *cons, char *s, int l);
+void cons_newline(struct CONSOLE *cons);
+void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal);
+void cmd_mem(struct CONSOLE *cons, int memtotal);
+void cmd_cls(struct CONSOLE *cons);
+void cmd_dir(struct CONSOLE *cons);
+void cmd_type(struct CONSOLE *cons, int *fat, char *cmdline);
+int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline);
+void hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 
 // file.c
 struct FILEINFO {
@@ -264,3 +280,4 @@ struct FILEINFO {
 };
 void file_readfat(int *fat, unsigned char *img);
 void file_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+struct FILEINFO *file_search(char *name, struct FILEINFO *finfo, int max);

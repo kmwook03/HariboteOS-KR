@@ -6,19 +6,21 @@
 [BITS   32]             ; for 32-bit
 [FILE   "naskfunc.nas"] ;   info for obj
 
-    GLOBAL  _io_hlt, _io_cli, _io_sti, _io_stihlt
-    GLOBAL  _io_in8, _io_in16, _io_in32
-    GLOBAL  _io_out8, _io_out16, _io_out32
-    GLOBAL  _io_load_eflags, _io_store_eflags
-    GLOBAL  _load_gdtr, _load_idtr
-    GLOBAL  _load_cr0, _store_cr0
-    GLOBAL  _load_tr
-    GLOBAL  _asm_inthandler20, _asm_inthandler21
-    GLOBAL  _asm_inthandler27, _asm_inthandler2c
-    GLOBAL  _memtest_sub
-    GLOBAL  _farjmp
-    EXTERN  _inthandler20, _inthandler21
-    EXTERN  _inthandler27, _inthandler2c
+	GLOBAL	_io_hlt, _io_cli, _io_sti, _io_stihlt
+	GLOBAL	_io_in8,  _io_in16,  _io_in32
+	GLOBAL	_io_out8, _io_out16, _io_out32
+	GLOBAL	_io_load_eflags, _io_store_eflags
+	GLOBAL	_load_gdtr, _load_idtr
+	GLOBAL	_load_cr0, _store_cr0
+	GLOBAL	_load_tr
+	GLOBAL	_asm_inthandler20, _asm_inthandler21
+	GLOBAL	_asm_inthandler27, _asm_inthandler2c
+	GLOBAL	_memtest_sub
+	GLOBAL	_farjmp, _farcall
+	GLOBAL	_asm_hrb_api
+	EXTERN	_inthandler20, _inthandler21
+	EXTERN	_inthandler27, _inthandler2c
+	EXTERN	_hrb_api
 
 [SECTION    .text]
 
@@ -207,3 +209,16 @@ mts_fin:
 _farjmp:
     JMP     FAR [ESP+4]
     RET
+
+_farcall:
+    CALL    FAR [ESP+4]
+    RET
+
+_asm_hrb_api:
+		STI
+        PUSHAD
+        PUSHAD
+        CALL    _hrb_api
+		ADD		ESP,32
+        POPAD
+		IRETD
