@@ -21,6 +21,8 @@ void HariMain(void)
 	struct TASK *task_a, *task_cons;
 	struct TIMER *timer;
 
+	struct CONSOLE *cons;
+
 	static char keytable0[0x80] = {
 		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0,   0,
 		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '@', '[', 0,   0,   'A', 'S',
@@ -42,7 +44,7 @@ void HariMain(void)
 		0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
 		0,   0,   0,   '_', 0,   0,   0,   0,   0,   0,   0,   0,   0,   '|', 0,   0
 	};
-	int key_to = 0, key_shift = 0, key_leds = (binfo->leds >> 4) & 7, keycmd_wait = -1;
+	int key_to = 0, key_shift = 0, key_ctrl = 0, key_leds = (binfo->leds >> 4) & 7, keycmd_wait = -1;
 
 	init_gdtidt();
 	init_pic();
@@ -71,7 +73,7 @@ void HariMain(void)
 	shtctl = shtctl_init(memman, binfo->vram, binfo->scrnx, binfo->scrny);
 	task_a = task_init(memman);
 	fifo.task = task_a;
-    task_run(task_a, 1, 0); 
+    task_run(task_a, 1, 2); 
 
     // sht_back
 	sht_back  = sheet_alloc(shtctl);
@@ -213,6 +215,12 @@ void HariMain(void)
 				if (i == 256 + 0xb6) { // right shift released
 					key_shift &= ~2;
 				}
+				if (i == 256 + 0x1d) { // Ctrl pressed
+					key_ctrl |= 1;
+				}
+				if (i == 256 + 0x9d) { // Ctrl released
+					key_ctrl &= ~1;
+				}
 				if (i == 256 + 0x3a) {
 					key_leds ^= 4;
 					fifo32_put(&keycmd, KEYCMD_LED);
@@ -234,6 +242,14 @@ void HariMain(void)
 				if (i == 256 + 0xfe) { // keyboard did not received data
 					wait_KBC_sendready();
 					io_out8(PORT_KEYCMD, keycmd_wait);
+				}
+				if (i == 256 + 0x2e && key_ctrl != 0 && task_cons->tss.ss0 != 0) { // Ctrl + C
+					cons = (struct CONSOLE *) *((int *) 0x0fec);
+					cons_putstr0(cons, "\nBreak(key) :\n");
+					io_cli(); // disable CPU interrupts
+					task_cons->tss.eax = (int) &(task_cons->tss.esp0);
+					task_cons->tss.eip = (int) asm_end_app;
+					io_sti(); // enable CPU interrupts
 				}
 				// cursor refresh
 				if (cursor_c >= 0) {

@@ -12,6 +12,9 @@ struct BOOTINFO {
 // naskfcunc.nas
 void io_hlt(void);
 void io_cli(void);
+void io_sti(void);
+void io_stihlt(void);
+int io_in8(int port);
 void io_out8(int port, int data);
 int io_load_eflags(void);
 void io_store_eflags(int eflags);
@@ -20,6 +23,8 @@ void load_idtr(int limit, int addr);
 int load_cr0(void);
 void store_cr0(int cr0);
 void load_tr(int tr);
+void asm_inthandler0c(void);
+void asm_inthandler0d(void);
 void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
@@ -28,6 +33,8 @@ unsigned int memtest_sub(unsigned int start, unsigned int end);
 void farjmp(int eip, int cs);
 void farcall(int eip, int cs);
 void asm_hrb_api(void);
+void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
+void asm_end_app(void);
 
 // fifo.c
 struct FIFO32 {
@@ -105,10 +112,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 
 // int.c
 void init_pic(void);
-void inthandler21(int *esp);
 void inthandler27(int *esp);
-void inthandler2c(int *esp);
-
 #define PIC0_ICW1    0x0020
 #define PIC0_OCW2    0x0020
 #define PIC0_IMR     0x0021
@@ -195,7 +199,7 @@ struct TIMER {
 };
 
 struct TIMERCTL {
-	unsigned int count, next, using;
+	unsigned int count, next;
 	struct TIMER *t0;
     struct TIMER timers0[MAX_TIMER];
 };
@@ -211,7 +215,7 @@ void inthandler20(int *esp);
 #define MAX_TASKS   1000 // max number of tasks
 #define TASK_GDT0   3    // first TSS GDT number
 #define MAX_TASKS_LV  100 // max number of tasks per level
-#define MAX_TASKLEVELS  10  // max number
+#define MAX_TASKLEVELS  10  // max number of task levels
 
 struct TSS32 {
 	int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;
@@ -241,6 +245,7 @@ struct TASKCTL {
 };
 
 extern struct TIMER *task_timer;
+struct TASK *task_now(void);
 struct TASK *task_init(struct MEMMAN *memman);
 struct TASK *task_alloc(void);
 void task_run(struct TASK *task, int level, int priority);
@@ -269,7 +274,9 @@ void cmd_cls(struct CONSOLE *cons);
 void cmd_dir(struct CONSOLE *cons);
 void cmd_type(struct CONSOLE *cons, int *fat, char *cmdline);
 int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline);
-void hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int *inthandler0c(int *esp);
+int *inthandler0d(int *esp);
 
 // file.c
 struct FILEINFO {
