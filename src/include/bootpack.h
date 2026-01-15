@@ -216,12 +216,12 @@ void timer_cancelall(struct FIFO32 *fifo);
 void inthandler20(int *esp);
 
 // mtask.c
-#define MAX_TASKS   1000 // max number of tasks
-#define TASK_GDT0   3    // first TSS GDT number
-#define MAX_TASKS_LV  100 // max number of tasks per level
+#define MAX_TASKS   1000    // max number of tasks
+#define TASK_GDT0   3       // first TSS GDT number
+#define MAX_TASKS_LV  100   // max number of tasks per level
 #define MAX_TASKLEVELS  10  // max number of task levels
 
-struct TSS32 {
+struct TSS32 {              // Task State Segment
 	int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;
 	int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi;
 	int es, cs, ss, ds, fs, gs;
@@ -229,23 +229,25 @@ struct TSS32 {
 };
 
 struct TASK {
-    int sel, flags;  // selector and status
-    int level, priority;
-    struct FIFO32 fifo;
-    struct TSS32 tss;
+    int sel, flags;         // selector and status
+    int level, priority;    // level and priority
+    struct FIFO32 fifo;     // FIFO for task
+    struct TSS32 tss;       // task state segment
+    struct CONSOLE *cons;   // console associated with this task
+    int ds_base;            // data segment base address
 };
 
 struct TASKLEVEL {
-    int running; // number of running tasks
-    int now; // current running task index
-    struct TASK *tasks[MAX_TASKS_LV];
+    int running;                        // number of running tasks
+    int now;                            // current running task index
+    struct TASK *tasks[MAX_TASKS_LV];   // addresses of tasks
 };
 
 struct TASKCTL {
-    int now_lv;
-    char lv_change;
-    struct TASKLEVEL level[MAX_TASKLEVELS];
-    struct TASK tasks0[MAX_TASKS];
+    int now_lv;                                 // current level
+    char lv_change;                             // flag for level change
+    struct TASKLEVEL level[MAX_TASKLEVELS];     // task levels
+    struct TASK tasks0[MAX_TASKS];              // actual tasks
 };
 
 extern struct TIMER *task_timer;
