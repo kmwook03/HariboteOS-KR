@@ -229,12 +229,12 @@ struct TSS32 {              // Task State Segment
 };
 
 struct TASK {
-    int sel, flags;         // selector and status
-    int level, priority;    // level and priority
-    struct FIFO32 fifo;     // FIFO for task
-    struct TSS32 tss;       // task state segment
-    struct CONSOLE *cons;   // console associated with this task
-    int ds_base;            // data segment base address
+    int sel, flags;                 // selector(number of GDT) and status
+    int level, priority;            // level and priority
+    struct FIFO32 fifo;             // FIFO for task
+    struct TSS32 tss;               // task state segment
+    struct CONSOLE *cons;           // console associated with this task
+    int ds_base, cons_stack;        // data segment base address
 };
 
 struct TASKLEVEL {
@@ -249,7 +249,7 @@ struct TASKCTL {
     struct TASKLEVEL level[MAX_TASKLEVELS];     // task levels
     struct TASK tasks0[MAX_TASKS];              // actual tasks
 };
-
+extern struct TASKCTL *taskctl;
 extern struct TIMER *task_timer;
 struct TASK *task_now(void);
 struct TASK *task_init(struct MEMMAN *memman);
