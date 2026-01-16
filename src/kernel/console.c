@@ -324,13 +324,13 @@ int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline)
 {
     struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
     struct FILEINFO *finfo;
-    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT;
     char name[18], *p, *q;
     struct TASK *task = task_now();
+    int segsiz, datsiz, esp, dathrb; // metadata of .hrb file
     struct SHTCTL *shtctl;
     struct SHEET *sht;
     int i;
-    int segsiz, datsiz, esp, dathrb; // metadata of .hrb file
+    char s[128];
 
     for (i=0; i<13; i++) {
         if (cmdline[i] <= ' ') {
@@ -360,9 +360,12 @@ int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline)
             datsiz = *((int *) (p + 0x0010));
             dathrb = *((int *) (p + 0x0014));
             q = (char *) memman_alloc_4k(memman, segsiz);
-            task->ds_base = (int) q;;
+            q = (char *) memman_alloc_4k(memman, segsiz);
+            sprintf(s, "p:%08X q:%08X sz:%X", (int)p, (int)q, segsiz);
+            cons_putstr0(cons, s);
+            task->ds_base = (int) q;
             set_segmdesc(task->ldt + 0, finfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
-            set_segmdesc(task->ldt + 1, segsiz - 1, (int) q, AR_DATA32_RW + 0x60);
+            set_segmdesc(task->ldt + 1, segsiz - 1,      (int) q, AR_DATA32_RW + 0x60);
             for (i=0; i<datsiz; i++) {
                 q[esp + i] = p[dathrb + i];
             }
@@ -470,7 +473,7 @@ int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
             }
             i = fifo32_get(&task->fifo);
             io_sti();
-            if (i <= 1) {
+            if (i <= 1 && cons->sht != 0) {
                 timer_init(cons->timer, &task->fifo, 1);
                 timer_settime(cons->timer, 50);
             }
@@ -486,10 +489,6 @@ int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
                 fifo32_put(sys_fifo, cons->sht - shtctl->sheets0 + 2024); // 2024 - 2279
                 cons->sht = 0;
                 io_sti();
-            }
-            if (256 <= i && i <= 511) {
-                reg[7] = i - 256;
-                return 0;
             }
             if (i >= 256) {
                 reg[7] = i - 256;

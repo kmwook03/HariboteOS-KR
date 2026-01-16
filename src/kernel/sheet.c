@@ -10,12 +10,12 @@ struct SHTCTL *shtctl_init(struct MEMMAN *memman, unsigned char *vram, int xsize
     int i;
     ctl = (struct SHTCTL *) memman_alloc_4k(memman, sizeof (struct SHTCTL));
     if (ctl == 0) { 
-        goto err; // I don't want to use goto instruction...
+        goto err;
     }
     ctl->map = (unsigned char *) memman_alloc_4k(memman, xsize * ysize);
     if (ctl->map == 0) {
         memman_free_4k(memman, (int) ctl, sizeof (struct SHTCTL));
-        goto err; // I don't want to use goto instruction...
+        goto err;
     }
     ctl->vram = vram;
     ctl->xsize = xsize;

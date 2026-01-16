@@ -24,10 +24,10 @@ COPY = cp
 DEL = rm -f
 
 # -- Source Path --
-VPATH = src/kernel:src/boot:src/asm:src/graphics/font:app/src:app/api
+VPATH = src/kernel:src/boot:src/graphics/font:app/src:app/api
 
 # -- APP API --
-API_SRC = $(wildcard app/api/api*.nas)
+API_SRC = $(wildcard app/api/api*.nas) app/api/alloca.nas
 API_OBJS = $(patsubst app/api/%.nas, $(APP_OUT_DIR)/api/%.obj, $(API_SRC))
 API_LIB = $(APP_OUT_DIR)/api/apilib.lib
 

@@ -21,15 +21,15 @@ void HariMain(void)
 	struct MOUSE_DEC mdec;												// mouse decoding data
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;				// memory manager
 	struct SHEET *sht_back, *sht_mouse;									// sheets: background, mouse
-	struct TASK *task_a, *task_cons[2], *task;							// tasks: task_a, console task, etc task
+	struct TASK *task_a, *task;											// tasks: task_a, task
 	struct CONSOLE *cons;												// console
 	struct SHEET *sht = 0, *key_win, *sht2;								// window sheet
 
 	// Declare Variables
 	// 1. Buffers
 	char s[40];															// string buffer
-	int fifobuf[128], keycmd_buf[32], *cons_fifo[2];					// FIFO buffers
-	unsigned char *buf_back, buf_mouse[256], *buf_cons[2];				// buffers for sheets: background, mouse, console
+	int fifobuf[128], keycmd_buf[32];									// FIFO buffers
+	unsigned char *buf_back, buf_mouse[256];							// buffers for sheets: background, mouse, console
 	// 2. Positions and Indexes
 	int mx, my, i, new_mx = -1, new_my = 0, new_wx = 0x7fffffff, new_wy = 0; // variables for mouse and cursor
 	unsigned int memtotal;												// total memory size
@@ -63,17 +63,14 @@ void HariMain(void)
 	init_pic(); 															// initialize PIC
 	io_sti(); 															    // enable CPU interrupts (set IF flag)
 	fifo32_init(&fifo, 128, fifobuf, 0); 									// initialize FIFO buffer
+	*((int *) 0x0fec) = (int) &fifo;										// store main FIFO address (0x0fec)
 	init_pit(); 															// initialize PIT
 
 	init_keyboard(&fifo, 256); 											    // initialize keyboard
 	enable_mouse(&fifo, 512, &mdec); 										// enable mouse
 	io_out8(PIC0_IMR, 0xf8); 												// allow PIT, PIC1 and keyboard(11111000)
 	io_out8(PIC1_IMR, 0xef); 												// allow mouse(11101111)
-
 	fifo32_init(&keycmd, 32, keycmd_buf, 0); 								// keyboard command FIFO buffer
-	*((int *) 0x0fec) = (int) &fifo;										// store main FIFO address (0x0fec)
-	fifo32_put(&keycmd, KEYCMD_LED);										// keyboard LED command
-	fifo32_put(&keycmd, key_leds);											// send current LED status
 
     // Initialize Memory Manager
 	memtotal = memtest(0x00400000, 0xbfffffff);								// test memory size
@@ -118,6 +115,9 @@ void HariMain(void)
 	// Activate Keyboard Window
 	keywin_on(key_win);
 
+	fifo32_put(&keycmd, KEYCMD_LED);										// keyboard LED command
+	fifo32_put(&keycmd, key_leds);											// send current LED status
+
 	// Main Loop
 	for (;;) {
 		// Send keyboard LED status
@@ -128,28 +128,28 @@ void HariMain(void)
 		}
 		io_cli(); // disable CPU interrupts
 		// Check FIFO buffer status
-		if (fifo32_status(&fifo) == 0) { // if empty
-			if (new_mx >= 0) { // if mouse moved
-				io_sti(); // enable CPU interrupts
-				sheet_slide(sht_mouse, new_mx, new_my); // move mouse sheet
-				new_mx = -1; // reset new mouse x position
-			} else if (new_wx != 0x7fffffff) { // if window moved
-				io_sti(); // enable CPU interrupts
-				sheet_slide(sht, new_wx, new_wy); // move window sheet
-				new_wx = 0x7fffffff; // reset new window x position
-			} else { // nothing to do, sleep
-            	task_sleep(task_a); // sleep main task
-				io_sti(); // enable CPU interrupts
+		if (fifo32_status(&fifo) == 0) { 					// if fifo is empty
+			if (new_mx >= 0) { 								// if mouse moved
+				io_sti(); 									// enable CPU interrupts
+				sheet_slide(sht_mouse, new_mx, new_my); 	// move mouse sheet
+				new_mx = -1; 								// reset new mouse x position
+			} else if (new_wx != 0x7fffffff) { 				// if window moved
+				io_sti(); 									// enable CPU interrupts
+				sheet_slide(sht, new_wx, new_wy); 			// move window sheet
+				new_wx = 0x7fffffff; 						// reset new window x position
+			} else {										// if nothing to do, sleep
+            	task_sleep(task_a); 						// sleep task_a
+				io_sti(); 									// enable CPU interrupts
 			}
-		} else { // if not empty
-			i = fifo32_get(&fifo); // get data from FIFO buffer
-			io_sti(); // enable CPU interrupts
-			if (key_win != 0 && key_win->flags == 0) { // if key_win is closed
-				if (shtctl->top == 1) { // only background sheet remains
-					key_win = 0; // no active window
-				} else { // switch to next top sheet
+		} else { 											// if fifo is not empty
+			i = fifo32_get(&fifo); 							// get data from FIFO buffer
+			io_sti(); 										// enable CPU interrupts
+			if (key_win != 0 && key_win->flags == 0) { 	// if key_win is closed
+				if (shtctl->top == 1) { 					// only background sheet remains
+					key_win = 0; 							// no active window
+				} else {										// switch to next top sheet
 					key_win = shtctl->sheets[shtctl->top - 1]; // next top sheet
-					keywin_on(key_win); // activate it
+					keywin_on(key_win); 						// activate it
 				}
 			}
 			// keyboard data processing logic
@@ -261,7 +261,6 @@ void HariMain(void)
 					if (my > binfo->scrny - 1) {
 						my = binfo->scrny - 1;
 					}
-					sheet_slide(sht_mouse, mx, my);
 					new_mx = mx;
 					new_my = my;
                     if ((mdec.btn & 0x01) != 0) { // left button is pressed
