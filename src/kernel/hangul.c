@@ -145,10 +145,13 @@ unsigned short utf8_to_johab(unsigned char *s)
 void putstr_utf8(unsigned char *vram, int xsize, int x, int y, char color, unsigned char *s)
 {
     unsigned char *korean = (unsigned char *) *((int *) 0x0fe8); // 한글 폰트 주소
+    char s_temp[2] = {0, 0}; // 문자 하나만 담는 임시 버퍼
     while (*s != 0x00) {
         if ((*s & 0x80) == 0) {
             // 1바이트 ASCII 문자
-            putfonts8_asc(vram, xsize, x, y, color, s);
+            s_temp[0] = *s;
+            s_temp[1] = 0x00;
+            putfonts8_asc(vram, xsize, x, y, color, s_temp);
             x += 8;
             s++;
         } else if ((*s & 0xE0) == 0xE0) {
@@ -165,5 +168,199 @@ void putstr_utf8(unsigned char *vram, int xsize, int x, int y, char color, unsig
         } else {
             s++;
         }
+    }
+}
+
+// 한글 오토마타
+
+// 키 매핑 테이블
+int key2cho(char c) {
+    switch(c) {
+case 'r': return 0;  // ㄱ
+        case 'R': return 1;  // ㄲ
+        case 's': return 2;  // ㄴ
+        case 'e': return 3;  // ㄷ
+        case 'E': return 4;  // ㄸ
+        case 'f': return 5;  // ㄹ
+        case 'a': return 6;  // ㅁ
+        case 'q': return 7;  // ㅂ
+        case 'Q': return 8;  // ㅃ
+        case 't': return 9;  // ㅅ
+        case 'T': return 10; // ㅆ
+        case 'd': return 11; // ㅇ
+        case 'w': return 12; // ㅈ
+        case 'W': return 13; // ㅉ
+        case 'c': return 14; // ㅊ
+        case 'z': return 15; // ㅋ
+        case 'x': return 16; // ㅌ
+        case 'v': return 17; // ㅍ
+        case 'g': return 18; // ㅎ
+    }
+    return -1;
+}
+
+int key2jung(char c) {
+    switch(c) {
+case 'k': return 0;  // ㅏ
+        case 'o': return 1;  // ㅐ
+        case 'i': return 2;  // ㅑ
+        case 'O': return 3;  // ㅒ
+        case 'j': return 4;  // ㅓ
+        case 'p': return 5;  // ㅔ
+        case 'u': return 6;  // ㅕ
+        case 'P': return 7;  // ㅖ
+        case 'h': return 8;  // ㅗ
+        case 'y': return 13; // ㅜ
+        case 'n': return 17; // ㅠ
+        case 'm': return 18; // ㅡ
+        case 'l': return 20; // ㅣ
+    }
+    return -1;
+}
+
+int key2jong(char c) {
+switch(c) {
+        case 'r': return 1;  // ㄱ
+        case 'R': return 2;  // ㄲ
+        case 's': return 4;  // ㄴ
+        case 'e': return 7;  // ㄷ
+        case 'f': return 8;  // ㄹ
+        case 'a': return 16; // ㅁ
+        case 'q': return 17; // ㅂ
+        case 't': return 19; // ㅅ
+        case 'T': return 20; // ㅆ
+        case 'd': return 21; // ㅇ
+        case 'w': return 22; // ㅈ
+        case 'c': return 23; // ㅊ
+        case 'z': return 24; // ㅋ
+        case 'x': return 25; // ㅌ
+        case 'v': return 26; // ㅍ
+        case 'g': return 27; // ㅎ
+    }
+    return 0; // 종성 없음
+}
+
+void unicode_to_utf8(unsigned short val, char *dest)
+{
+    if (val < 0x80) {
+        dest[0] = val;
+        dest[1] = 0;
+        dest[2] = 0;
+        dest[3] = 0;
+    } else if (val < 0x0800) {
+        dest[0] = 0xc0 | (val >> 6);
+        dest[1] = 0x80 | (val & 0x3f);
+        dest[2] = 0;
+        dest[3] = 0;
+    } else {
+        dest[0] = 0xe0 | (val >> 12);
+        dest[1] = 0x80 | ((val >> 6) & 0x3f);
+        dest[2] = 0x80 | (val & 0x3f);
+        dest[3] = 0;
+    }
+    return;
+}
+
+static int jong2cho[] = {
+    -1, 0, 1, -1, 2, -1, -1, 3, 5, -1, -1, -1, -1, -1, -1, -1, 
+    6, 7, -1, 9, 10, 11, 12, 14, 15, 16, 17, 18
+};
+
+void hangul_automata(struct CONSOLE *cons, struct TASK *task, int key)
+{
+    char s[4];
+    int idx_cho, idx_jung, idx_jong;
+    int code;
+
+    idx_cho = key2cho(key);
+    idx_jung = key2jung(key);
+    idx_jong = key2jong(key);
+
+    switch(task->hangul_state) {
+        case 0:
+            if (idx_cho != -1) {
+                task->hangul_state = 1;
+                task->hangul_idx[0] = idx_cho;
+                task->hangul_idx[1] = -1;
+                task->hangul_idx[2] = -1;
+            } else if (idx_jung != -1) {
+                // 모음 단독 입력
+            } else {
+                // 한글 아님
+                s[0] = key;
+                s[1] = 0;
+            }
+            break;
+        case 1:
+            if (idx_jung != -1) {
+                task->hangul_state = 2;
+                task->hangul_idx[1] = idx_jung;
+
+                code = 0xac00 + (task->hangul_idx[0] * 588) + (task->hangul_idx[1] * 28);
+                unicode_to_utf8(code, s);
+                cons_putstr0(cons, s);
+                cons->cur_x -= 16; // 커서 뒤로
+            } else if (idx_cho != -1) {
+                task->hangul_idx[0] = idx_cho;
+            }
+            break;
+        case 2:
+            if (idx_jong != -1) {
+                task->hangul_idx[2] = idx_jong;
+                cons_putchar(cons, ' ', 0); 
+                cons->cur_x -= 8; // 커서 뒤로
+                code = 0xac00 + (task->hangul_idx[0] * 588) + (task->hangul_idx[1] * 28) + task->hangul_idx[2];
+
+                unicode_to_utf8(code, s);
+                cons_putstr0(cons, s);
+                cons->cur_x -= 16; // 커서 뒤로
+                task->hangul_state = 3;
+            } else if (idx_jung != -1) {
+                cons->cur_x += 16;
+                task->hangul_state = 0;
+                hangul_automata(cons, task, key);
+            }
+            break;
+        case 3:
+            if (idx_jung != -1) {
+                code = 0xac00 + (task->hangul_idx[0] * 588) + (task->hangul_idx[1] * 28);
+                cons_putchar(cons, ' ', 0);
+                cons->cur_x -= 8; // 커서 뒤로
+
+                unicode_to_utf8(code, s);
+                cons_putstr0(cons, s);
+
+                int next_cho = jong2cho[task->hangul_idx[2]];
+                if (next_cho != -1) {
+                    task->hangul_idx[0] = next_cho;
+                    task->hangul_idx[1] = idx_jung;
+                    task->hangul_idx[2] = -1;
+
+                    code = 0xac00 + (task->hangul_idx[0] * 588) + (task->hangul_idx[1] * 28);
+                    unicode_to_utf8(code, s);
+                    cons_putstr0(cons, s);
+                    cons->cur_x -= 16; // 커서 뒤로
+
+                    task->hangul_state = 2;
+                } else {
+                    task->hangul_state = 0;
+                    hangul_automata(cons, task, key);
+                }
+            } else if (idx_cho != -1) {
+                cons->cur_x += 16;
+
+                task->hangul_state = 1;
+                task->hangul_idx[0] = idx_cho;
+                task->hangul_idx[1] = -1;
+                task->hangul_idx[2] = -1;
+            } else {
+                cons->cur_x += 16;
+                task->hangul_state = 0;
+
+                s[0] = key;
+                s[1] = 0;
+                cons_putstr0(cons, s);
+            }
+            break;
     }
 }

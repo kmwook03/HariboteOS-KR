@@ -32,6 +32,8 @@ void console_task(struct SHEET *sht, int memtotal)
     task->fhandle = fhandle;
     task->fat = fat;
 
+    task->langmode = 0;
+
     cons_putchar(&cons, '>', 1);
 
     for (;;) {
@@ -69,13 +71,12 @@ void console_task(struct SHEET *sht, int memtotal)
                 cmd_exit(&cons, fat);
             }
 			if (256 <= i && i <= 511) {
-				if (i == 8 + 256) {
+				if (i == 8 + 256) {                         // backspace
 					if (cons.cur_x > 16) {
 						cons_putchar(&cons, ' ', 0);
 						cons.cur_x -= 8;
 					}
-				} else if (i == 10 + 256) {
-					// enter
+				} else if (i == 10 + 256) {                  // enter
                     cons_putchar(&cons, ' ', 0);
 					cmdline[cons.cur_x / 8 - 2] = 0;
 					cons_newline(&cons);
@@ -86,10 +87,17 @@ void console_task(struct SHEET *sht, int memtotal)
                     cons_putchar(&cons, '>', 1);
 				} else {
                     // normal character
-					if (cons.cur_x < 240) {
-						cmdline[cons.cur_x / 8 - 2] = i - 256;
-						cons_putchar(&cons, i - 256, 1);
-					}
+                    if (task->langmode == 1) {
+                        int key = i - 256;
+                        if (cons.cur_x < 240) {
+                            hangul_automata(&cons, task, key);
+                        }
+                    } else {
+					    if (cons.cur_x < 240) {
+						    cmdline[cons.cur_x / 8 - 2] = i - 256;
+						    cons_putchar(&cons, i - 256, 1);
+					    }
+                    }
 				}
 			}
             if (cons.sht != 0) {
@@ -141,17 +149,58 @@ void cons_putchar(struct CONSOLE *cons, int chr, char move)
 
 void cons_putstr0 (struct CONSOLE *cons, char *s)
 {
+    unsigned char *korean = (unsigned char *) *((int *) 0x0fe8);
+    unsigned short johab;
+    int code;
+
     for (; *s!=0; s++) {
-        cons_putchar(cons, *s, 1);
+        if ((*s & 0x80) == 0) { // ASCII
+            cons_putchar(cons, *s, 1);
+        } else if ((*s & 0xe0) == 0xe0) {
+            if (s[1] == 0 || s[2] == 0) break; // 문자열 끝 예외처리
+            johab = utf8_to_johab((unsigned char *) s);
+            if (johab != 0) {
+                // 한글 출력
+                if (cons->sht != 0) {
+                    put_johab(cons->sht->buf, cons->sht->bxsize, cons->cur_x, cons->cur_y, COL8_FFFFFF, korean, johab);
+                }
+                cons->cur_x += 16;
+
+                if (cons->cur_x + 16 > cons->sht->bxsize) {
+                    cons_newline(cons);
+                }
+            }
+            s += 2; // 3바이트 문자이므로 포인터 2 증가
+        }
     }
     return;
 }
 
 void cons_putstr1(struct CONSOLE *cons, char *s, int l)
 {
+    unsigned char *korean = (unsigned char *) *((int *) 0x0fe8);
+    unsigned short johab;
     int i;
+
     for (i=0; i<l; i++) {
-        cons_putchar(cons, s[i], 1);
+        if ((s[i] & 0x80) == 0) { // ASCII
+            cons_putchar(cons, s[i], 1);
+        } else if ((s[i] & 0xe0) == 0xe0) {
+            if (s[i+1] == 0 || s[i+2] == 0) break; // 문자열 끝 예외처리
+            johab = utf8_to_johab((unsigned char *) &s[i]);
+            if (johab != 0) {
+                // 한글 출력
+                if (cons->sht != 0) {
+                    put_johab(cons->sht->buf, cons->sht->bxsize, cons->cur_x, cons->cur_y, COL8_FFFFFF, korean, johab);
+                }
+                cons->cur_x += 16;
+
+                if (cons->cur_x + 16 > cons->sht->bxsize) {
+                    cons_newline(cons);
+                }
+            }
+            i += 2; // 3바이트 문자이므로 인덱스 2 증가
+        }
     }
     return;
 }
@@ -197,6 +246,8 @@ void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal)
         cmd_start(cons, cmdline, memtotal);
     } else if (strncmp(cmdline, "ncst ", 5) == 0) {
         cmd_ncst(cons, cmdline, memtotal);
+    } else if (strncmp(cmdline, "langmode ", 9) == 0) {
+        cmd_langmode(cons, cmdline);
     } else if (cmdline[0] != 0) {			
         if (cmd_app(cons, fat, cmdline) == 0) {			
             cons_putstr0(cons, "Bad command.\n\n");
@@ -306,6 +357,27 @@ void cmd_ncst(struct CONSOLE *cons, char *cmdline, int memtotal)
 	fifo32_put(fifo, 10 + 256);	// Enter
 	cons_newline(cons);
 	return;
+}
+
+void cmd_langmode(struct CONSOLE *cons, char *cmdline)
+{
+    struct TASK *task = task_now();
+    unsigned char mode = cmdline[9] - '0';
+    int i;
+    if (mode <= 1) {
+        task->langmode = mode;
+        task->hangul_state = 0;
+        for(i=0; i<3; i++) task->hangul_idx[i] = -1;
+        if (mode == 0) {
+            cons_putstr0(cons, "Language mode changed to English.\n");
+        } else {
+            cons_putstr0(cons, "Language mode changed to Korean.\n");
+        }
+    } else {
+        cons_putstr0(cons, "langmode command error. (0: English, 1: Korean)\n");
+    }
+    cons_newline(cons);
+    return;
 }
 
 int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline)

@@ -239,7 +239,8 @@ struct TASK {
     int *fat;                           // file allocation table
     char *cmdline;                      // command line
     char langmode;                      // language mode (0: English, 1: Korean)
-
+    char hangul_state;
+    char hangul_idx[3];
 };
 
 struct TASKLEVEL {
@@ -323,3 +324,8 @@ struct SHEET *open_console(struct SHTCTL *shtctl, unsigned int memtotal);
 void put_johab(char *vram, int xsize, int x, int y, char color, unsigned char *font, unsigned short code);
 unsigned short utf8_to_johab(unsigned char *s);
 void putstr_utf8(unsigned char *vram, int xsize, int x, int y, char color, unsigned char *s);
+int key2cho(char c);
+int key2jung(char c);
+int key2jong(char c);
+void unicode_to_utf8(unsigned short val, char *dest);
+void hangul_automata(struct CONSOLE *cons, struct TASK *task, int key);

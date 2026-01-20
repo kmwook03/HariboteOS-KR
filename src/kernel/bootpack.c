@@ -84,6 +84,7 @@ void HariMain(void)
 	fifo.task = task_a;														// FIFO 버퍼에 메인 태스크 설정
     task_run(task_a, 1, 2);													// 메인 태스크 실행
 	*((int *) 0x0fe4) = (int) shtctl;										// shtctl 주소 저장 (0x0fe4)
+	task_a->langmode = 0;													// 메인 태스크는 영어 모드로 시작
 
     // 배경 시트 그리기
 	sht_back  = sheet_alloc(shtctl);														// 배경 시트 할당
@@ -157,7 +158,7 @@ void HariMain(void)
 	put_johab(binfo->vram, binfo->scrnx, 160, 120, COL8_FFFFFF, korean_font, 0xb461);
 
 	char ks[40];
-	sprintf(ks, "한글출력성공!!");
+	sprintf(ks, "한글 출력 성공!!");
 	putstr_utf8(binfo->vram, binfo->scrnx, 100, 140, COL8_FFFFFF, (unsigned char *) ks);
 
 	// 메인 루프
