@@ -1,14 +1,7 @@
 #include "../include/apilib.h"
-
-struct DLL_STRPICENV {	/* 64KB */
-	int work[64 * 1024 / 4];
-};
-
-struct RGB {
-	unsigned char b, g, r, t;
-};
-
 typedef unsigned char UCHAR;
+
+struct DLL_STRPICENV { int work[16384]; };
 
 typedef struct
 {
@@ -42,7 +35,7 @@ typedef struct
     int scan_dc[3];
     int scan_h[3];  
     int scan_v[3];  
-    int scan_qt[3];
+    int scan_qt[3]; 
     
     // DRI
     int interval;
@@ -65,7 +58,7 @@ typedef struct
     int bit_remain;
     int width_buf;
 
-	int base_img[64][64]; 
+	int base_img[64][64];
 
     /* for dll 
     
@@ -76,14 +69,22 @@ typedef struct
 }JPEG;
 
 /* for 16bit */
+#ifndef PIXEL16
 #define PIXEL16(r, g, b)	((r) << 11 | (g) << 5 | (b))
+	/* 0 <= r <= 31, 0 <= g <= 63, 0 <= b <= 31 */
+#endif
 
-/* jpeg.c */
-int info_JPEG(struct DLL_STRPICENV *env, int *info, int size, UCHAR *fp0);
-int decode0_JPEG(struct DLL_STRPICENV *env, int size, UCHAR *fp0, int b_type, UCHAR *buf, int skip);
+int info_JPEG(struct DLL_STRPICENV *env, int *info, int size, UCHAR *fp);
+int decode0_JPEG(struct DLL_STRPICENV *env, int size, UCHAR *fp, int b_type, UCHAR *buf, int skip);
+
 void jpeg_idct_init(int base_img[64][64]);
 int jpeg_init(JPEG *jpeg);
 void jpeg_decode(JPEG *jpeg, unsigned char *rgb,int b_type);
+
+struct RGB {
+    unsigned char b, g, r, t;
+};
+
 
 unsigned char rgb2pal(int r, int g, int b, int x, int y);
 void error(char *s);
@@ -92,85 +93,113 @@ void HariMain(void)
 {
     struct DLL_STRPICENV env;
     char filebuf[512 * 1024], winbuf[1040 * 805];
-    struct RGB picbuf[1024 * 768];
-	char s[32], *p;
-	int win, i, j, fsize, xsize, info[8];
-	struct RGB *q;
+    char s[32], *p;
+    int win, i, j, fsize, xsize, info[8];
+    struct RGB picbuf[1024 * 768], *q;
 
-	api_cmdline(s, 30);
-	for (p = s; *p > ' '; p++) { }
-	for (; *p == ' '; p++) { }	
+    /* 1. 명령행 파싱 */
+    api_cmdline(s, 30);
+    for (p = s; *p > ' '; p++) { }
+    for (; *p == ' '; p++) { }
 
-	i = api_fopen(p); if (i == 0) { error("file not found.\n"); }
-	fsize = api_fsize(i, 0);
-	if (fsize > 512 * 1024) {
-		error("file too large.\n");
-	}
-	api_fread(filebuf, fsize, i);
-	api_fclose(i);
+    /* 2. 파일 읽기 */
+    i = api_fopen(p); if (i == 0) { error("file not found.\n"); }
+    fsize = api_fsize(i, 0);
+    if (fsize > 512 * 1024) {
+        error("file too large.\n");
+    }
+    api_fread(filebuf, fsize, i);
+    api_fclose(i);
 
-	if (info[2] > 1024 || info[3] > 768) {
-		error("picture too large.\n");
-	}
+    /* 3. 파일 포맷 확인 (JPEG만 검사) */
+    /* 기존: BMP인지 확인 -> 아니면 JPEG인지 확인 -> 아니면 에러 */
+    /* 변경: 바로 JPEG인지 확인 -> 아니면 에러 */
+    if (info_JPEG(&env, info, fsize, filebuf) == 0) {
+        api_putstr0("file type not JPEG.\n");
+        api_end();
+    }
 
-	xsize = info[2] + 16;
-	if (xsize < 136) {
-		xsize = 136;
-	}
-	win = api_openwin(winbuf, xsize, info[3] + 37, -1, "gview");
+    /* 4. 이미지 크기 검사 */
+    if (info[2] > 1024 || info[3] > 768) {
+        error("picture too large.\n");
+    }
 
+    /* 5. 윈도우 생성 */
+    xsize = info[2] + 16;
+    if (xsize < 136) {
+        xsize = 136;
+    }
+    win = api_openwin(winbuf, xsize, info[3] + 37, -1, "JPEG View"); // 타이틀 변경
+
+    /* 6. 디코딩 (분기문 제거) */
+    /* 기존: info[0] 값에 따라 decode_BMP 또는 decode_JPEG 호출 */
+    /* 변경: 무조건 decode_JPEG 호출 */
     i = decode0_JPEG(&env, fsize, filebuf, 4, (char *) picbuf, 0);
-	if (i != 0) {
-		error("decode error.\n");
-	}
 
-	for (i = 0; i < info[3]; i++) {
-		p = winbuf + (i + 29) * xsize + (xsize - info[2]) / 2;
-		q = picbuf + i * info[2];
-		for (j = 0; j < info[2]; j++) {
-			p[j] = rgb2pal(q[j].r, q[j].g, q[j].b, j, i);
-		}
-	}
-	api_refreshwin(win, (xsize - info[2]) / 2, 29, (xsize - info[2]) / 2 + info[2], 29 + info[3]);
+    if (i != 0) {
+        error("decode error.\n");
+    }
 
-	for (;;) {
-		i = api_getkey(1);
-		if (i == 'Q' || i == 'q') {
-			api_end();
-		}
-	}
+    /* 7. 렌더링 (RGB -> Palatte 변환) */
+    /* Haribote OS는 8비트 컬러 모드이므로 디더링(Dithering)을 수행합니다 */
+    for (i = 0; i < info[3]; i++) {
+        p = winbuf + (i + 29) * xsize + (xsize - info[2]) / 2;
+        q = picbuf + i * info[2];
+        for (j = 0; j < info[2]; j++) {
+            p[j] = rgb2pal(q[j].r, q[j].g, q[j].b, j, i);
+        }
+    }
+    
+    /* 윈도우 갱신 */
+    api_refreshwin(win, (xsize - info[2]) / 2, 29, (xsize - info[2]) / 2 + info[2], 29 + info[3]);
+
+    /* 8. 종료 대기 */
+    for (;;) {
+        i = api_getkey(1);
+        if (i == 'Q' || i == 'q') {
+            api_end();
+        }
+    }
 }
 
+/* rgb2pal 및 error 함수는 그대로 유지 (생략 없음) */
 unsigned char rgb2pal(int r, int g, int b, int x, int y)
 {
-	static int table[4] = { 3, 1, 0, 2 };
-	int i;
-	x &= 1;
-	y &= 1;
-	i = table[x + y * 2];
-	r = (r * 21) / 256;	
-	g = (g * 21) / 256;
-	b = (b * 21) / 256;
-	r = (r + i) / 4;
-	g = (g + i) / 4;
-	b = (b + i) / 4;
-	return 16 + r + g * 6 + b * 36;
+    static int table[4] = { 3, 1, 0, 2 };
+    int i;
+    x &= 1; 
+    y &= 1;
+    i = table[x + y * 2];   
+    r = (r * 21) / 256; 
+    g = (g * 21) / 256;
+    b = (b * 21) / 256;
+    r = (r + i) / 4;
+    g = (g + i) / 4;
+    b = (b + i) / 4;
+    return 16 + r + g * 6 + b * 36;
 }
 
 void error(char *s)
 {
-	api_putstr0(s);
-	api_end();
+    api_putstr0(s);
+    api_end();
 }
+
+
+/* ----------------- start main section ----------------- */
 
 int info_JPEG(struct DLL_STRPICENV *env,int *info, int size, UCHAR *fp0)
 {
 	JPEG *jpeg = (JPEG *) (((int *) env) + 128);
 	jpeg->fp = fp0;
 	jpeg->fp1 = fp0 + size;
+
+//	if (512 + sizeof (JPEG) > 64 * 1024)
+//		return 0;
+
 	if (jpeg_init(jpeg))
 		return 0;
-
+//	jpeg_header(jpeg);
 
 	if (jpeg->width == 0)
 		return 0;
@@ -180,6 +209,7 @@ int info_JPEG(struct DLL_STRPICENV *env,int *info, int size, UCHAR *fp0)
 	info[2] = jpeg->width;
 	info[3] = jpeg->height;
 
+	/* OK */
 	return 1;
 }
 
@@ -192,11 +222,15 @@ int decode0_JPEG(struct DLL_STRPICENV *env,int size, UCHAR *fp0, int b_type, UCH
 	jpeg_idct_init(jpeg->base_img);
 	jpeg_init(jpeg);
 
+
 	jpeg->width_buf = skip / (b_type & 0x7f) + jpeg->width;
     jpeg_decode(jpeg, buf, b_type);
 
+	/* OK */
 	return 0;
 }
+
+// -------------------------- I/O ----------------------------
 
 unsigned short get_bits(JPEG *jpeg, int bit)
 {
@@ -214,7 +248,7 @@ unsigned short get_bits(JPEG *jpeg, int bit)
 			goto fin;
 		}
 		c = *jpeg->fp++;
-		if (c == 0xff) {
+		if (c == 0xff) { 
 			if (jpeg->fp >= jpeg->fp1) {
 				ret = 0;
 				goto fin;
@@ -234,6 +268,7 @@ fin:
 }
 
 
+
 // start of frame
 int jpeg_sof(JPEG *jpeg)
 {
@@ -242,6 +277,7 @@ int jpeg_sof(JPEG *jpeg)
 
 	if (jpeg->fp + 8 > jpeg->fp1)
 		goto err;
+
 	jpeg->height = jpeg->fp[3] << 8 | jpeg->fp[4];
 	jpeg->width  = jpeg->fp[5] << 8 | jpeg->fp[6];
 	n = jpeg->compo_count = jpeg->fp[7]; // Num of compo, nf
@@ -293,7 +329,7 @@ int jpeg_dqt(JPEG *jpeg)
  		if (c & 0xf8) {
 			// 16 bit DQT
 			for (i = 0; i < 64; i++) {
-				jpeg->dqt[j][i] = jpeg->fp[0];
+				jpeg->dqt[j][i] = jpeg->fp[0]; 
 				jpeg->fp += 2;
 			}
 			size += -64 * 2;
@@ -386,6 +422,7 @@ int jpeg_init(JPEG *jpeg)
 	jpeg->max_v = 0;
 	jpeg->bit_remain = 0;
 	jpeg->bit_buff   = 0;
+
 	jpeg->interval = 0;
 
 
@@ -397,9 +434,9 @@ int jpeg_init(JPEG *jpeg)
 		c = jpeg->fp[1];
 		jpeg->fp += 2;
 		if (c == 0xd8)
-			continue;
+			continue; /* SOI */
 		if (c == 0xd9)
-			goto err;
+			goto err; /* EOI */
 
 		if (c == 0xc0)
             jpeg_sof(jpeg);
@@ -425,9 +462,10 @@ int jpeg_init(JPEG *jpeg)
 				jpeg->scan_ac[i] = jpeg->fp[1] & 0x0F; // AC Huffman Table
 				jpeg->fp += 2;
 			}
-			jpeg->fp += 3;
+			jpeg->fp += 3; /* 3bytes skip */
             goto fin;
 		} else {
+
 			if (jpeg->fp + 2 > jpeg->fp1)
 				goto err;
 			jpeg->fp += jpeg->fp[0] << 8 | jpeg->fp[1];
@@ -441,7 +479,6 @@ fin:
 	return r;
 }
 
-// MCU decode
 
 void jpeg_decode_init(JPEG *jpeg)
 {
@@ -458,6 +495,7 @@ void jpeg_decode_init(JPEG *jpeg)
                 break;
 			}
 		}
+
 	}
 	jpeg->mcu_width  = jpeg->max_h * 8;
 	jpeg->mcu_height = jpeg->max_v * 8;
@@ -512,7 +550,7 @@ void jpeg_idct_init(int base_img[64][64])
             if (d == 0)
                 i = 4;
             for (m = 0; m < 8; m++){
-                tmpm[m] = cost[i];
+                tmpm[m] = cost[i]; 
                 i=(i+d)&31;
             }
         }
@@ -526,6 +564,7 @@ void jpeg_idct_init(int base_img[64][64])
                     i=(i+d)&31;
                 }
             }
+
             for (m = 0; m < 8; m++) {
                 for (n = 0; n < 8; n++) {
                     base_img[u * 8 + v][m * 8 + n] = (tmpm[m] * tmpn[n])>>15;
@@ -602,6 +641,7 @@ int jpeg_decode_huff(JPEG *jpeg,int scan,int *block, UCHAR *zigzag_table)
             return val;
         }
 
+        // ZRL
         while (run-- > 0)
             block[ zigzag_table[index++] ] = 0;
         
@@ -643,9 +683,14 @@ int jpeg_decode_mcu(JPEG *jpeg, UCHAR *zigzag_table)
 		vv = jpeg->scan_v[scan];
 		for (v = 0; v < vv; v++) {
             for (h = 0; h < hh; h++) {
+
 				val = jpeg_decode_huff(jpeg, scan, block, zigzag_table);
+
 				jpeg_idct(block, dest, jpeg->base_img);
+
 				p = jpeg->mcu_buf + (scan << 10);
+
+
 				jpeg_mcu_bitblt(dest, p, jpeg->mcu_width,
 					jpeg->mcu_width * h / hh, jpeg->mcu_height * v / vv,
 					jpeg->mcu_width * (h + 1) / hh, jpeg->mcu_height * (v + 1) / vv);
@@ -653,6 +698,8 @@ int jpeg_decode_mcu(JPEG *jpeg, UCHAR *zigzag_table)
 		}
 	}
 }
+
+// YCrCb=>RGB
 
 int jpeg_decode_yuv(JPEG *jpeg, int h, int v, unsigned char *rgb, int b_type)
 {
@@ -683,16 +730,20 @@ int jpeg_decode_yuv(JPEG *jpeg, int h, int v, unsigned char *rgb, int b_type)
 		for (x = 0; x < x1; x++) {
 			int b, g, r;
 			Y12 = py[0] << 12;
-			V = py[2048];
+		//	U = py[1024]; /* pu */
+			V = py[2048]; /* pv */
 
-			b = 128 + ((Y12 - V * 4 + py[1024] * 0x1C59) >> 12);
+			/* blue */
+			b = 128 + ((Y12 - V * 4 + py[1024] /* pu */ * 0x1C59) >> 12);
 			if (b & 0xffffff00)
 				b = (~b) >> 24;
 
+			/* green */
 			g = 128 + ((Y12 - V * 0x0B6C) >> 12);
 			if (g & 0xffffff00)
 				g = (~g) >> 24;
 
+			/* red */
 			r = 128 + ((Y12 + V * 0x166E) >> 12);
 			if (r & 0xffffff00)
 				r = (~r) >> 24;
