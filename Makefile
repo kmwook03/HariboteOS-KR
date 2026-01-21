@@ -131,7 +131,8 @@ $(IMG_DIR)/haribote.img: $(OUT_DIR)/ipl.bin $(IMG_DIR)/haribote.sys $(APP_TARGET
 		copy from:$(IMG_DIR)/haribote.sys to:@: \
 		copy from:$(KOREAN_FONT) to:@: \
 		$(foreach app, $(APP_TARGETS), copy from:$(app) to:@: ) \
-		copy from:fujisan.jpg to:@: \
+		copy from:text.txt to:@: \
+		copy from:sanjini.jpg to:@: \
 		imgout:$@
 
 iso : $(IMG_DIR)/haribote.img

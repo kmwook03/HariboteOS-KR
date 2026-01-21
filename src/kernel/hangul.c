@@ -38,15 +38,17 @@ unsigned char Middle[3][22] = {
 // @return: void
 void put_johab(struct SHEET *sht, int x, int y, char color, unsigned char *font, unsigned short code)
 {
+    // 이 코드는 반드시 한글 문자에 대해서만 호출되어야 한다는 가정 하에 1, 2번 과정이 생략되었음
+
     // code: 2바이트 조합형 코드 (MSB(1) + 초성(5) + 중성(5) + 종성(5))
     // 조합형 코드 분해
     int c1 = (code >> 8) & 0xFF; // 상위 8비트
     int c2 = code & 0xFF; // 하위 8비트
 
     // 비트 마스킹을 통한 음소별 값 추출
-    int cho_val = (c1 & 0x7C) >> 2; // 초성 5비트(c1 MSB 다음부터 5비트) 남기기
+    int cho_val = (c1 & 0x7C) >> 2;                         // 초성 5비트(c1 MSB 다음부터 5비트) 남기기
     int jung_val = ((c1 & 0x03) << 3) | ((c2 & 0xE0) >> 5); // 중성 5비트(c1 하위 2비트, c2 상위 3비트) 남기기
-    int jong_val = c2 & 0x1F; // 종성 5비트(c2 하위 5비트) 남기기
+    int jong_val = c2 & 0x1F;                               // 종성 5비트(c2 하위 5비트) 남기기
 
     int cho_idx = HangulCode[0][cho_val];
     int jung_idx = HangulCode[1][jung_val];
@@ -97,8 +99,8 @@ void put_johab(struct SHEET *sht, int x, int y, char color, unsigned char *font,
 
         // 픽셀 찍기
         for (b=0; b<8; b++) {
-            if (line1 & (0x80 >> b)) p[b] = color; // 왼쪽 8픽셀
-            if (line2 & (0x80 >> b)) p[b+8] = color; // 오른쪽 8픽셀
+            if (line1 & (0x80 >> b)) p[b] = color;      // 왼쪽 8픽셀
+            if (line2 & (0x80 >> b)) p[b+8] = color;    // 오른쪽 8픽셀
         }
     }
     return;
@@ -117,7 +119,7 @@ static unsigned char U2J_jung[21] = {
 static unsigned char U2J_jong[28] = {
     0, // 0: 받침 없음
     2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, // ㄱ(2)~ㅂ(19) -> 값 2~19 (18 빠짐)
-    20, 21, 22, 23, 24, 25, 26, 27, 28, 29 // ㅄ(18)~ㅎ(27) -> 값 20~29;
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29                      // ㅄ(18)~ㅎ(27) -> 값 20~29; (아직 구현 안됨)
 };
 
 // 초성 매핑 테이블 (ASCII 코드 -> 유니코드 인덱스)

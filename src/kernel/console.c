@@ -12,13 +12,14 @@
 // @return: void
 void console_task(struct SHEET *sht, int memtotal)
 {
-    struct TASK *task = task_now();
-    struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
-    int i, *fat = (int *) memman_alloc_4k(memman, 4 * 2880);
-	struct CONSOLE cons;
-    struct FILEHANDLE fhandle[8];
-    char cmdline[30];
+    struct TASK *task = task_now();                                     // 현재 태스크 포인터 얻기
+    struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;              // 메모리 관리자 포인터
+    int i, *fat = (int *) memman_alloc_4k(memman, 4 * 2880);            // FAT 테이블용 메모리 할당
+	struct CONSOLE cons;                                                // 콘솔 구조체
+    struct FILEHANDLE fhandle[8];                                       // 파일 핸들 구조체 배열
+    char cmdline[30];                                                   // 명령어 입력 버퍼
 
+    // 콘솔 구조체 초기화
     cons.sht = sht;
     cons.cur_x = 8;
     cons.cur_y = 28;
@@ -32,84 +33,86 @@ void console_task(struct SHEET *sht, int memtotal)
         timer_init(cons.timer, &task->fifo, 1);
         timer_settime(cons.timer, 50);
     }
-    file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200));
+    file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200));      // FAT 테이블 읽기
     for (i=0; i<8; i++) {
-        fhandle[i].buf = 0; // mark as unused
+        fhandle[i].buf = 0; // 미사용
     }
-    task->fhandle = fhandle;
-    task->fat = fat;
+    task->fhandle = fhandle;        // 파일 핸들 배열 설정
+    task->fat = fat;                // FAT 테이블 설정
 
-    task->langmode = 0;
+    task->langmode = 0;             // 영어 모드로 시작
 
-    cons_putchar(&cons, '>', 1);
+    cons_putchar(&cons, '>', 1);    // 프롬프트 출력        
 
+    // 메인 루프
     for (;;) {
-        io_cli();
-        if (fifo32_status(&task->fifo) == 0) {
-            task_sleep(task);
-            io_sti();
-        } else {
-            i = fifo32_get(&task->fifo);
-            io_sti();
+        io_cli(); // 인터럽트 금지
+        if (fifo32_status(&task->fifo) == 0) {          // FIFO 버퍼가 비어있으면
+            task_sleep(task);                           //    태스크 슬립
+            io_sti();                                   //    인터럽트 허용
+        } else {                                        // FIFO 버퍼에 데이터가 있으면
+            i = fifo32_get(&task->fifo);                //    데이터 처리
+            io_sti();                                   //    인터럽트 허용    
             if (i <= 1 && cons.sht != 0) { // 커서 깜빡임 처리
                 if (i != 0) {
-                    timer_init(cons.timer, &task->fifo, 0);
+                    timer_init(cons.timer, &task->fifo, 0); // 커서 ON
 					if (cons.cur_c >= 0) {
                     	cons.cur_c = COL8_FFFFFF;
 					}
                 } else {
-                    timer_init(cons.timer, &task->fifo, 1);
+                    timer_init(cons.timer, &task->fifo, 1); // 커서 OFF
 					if (cons.cur_c >= 0) {
                     	cons.cur_c = COL8_000000;
 					}
                 }
-                timer_settime(cons.timer, 50);
+                timer_settime(cons.timer, 50); // 0.5초 간격
             }
-			if (i == 2) {
+			if (i == 2) { // 커서 켜기
 				cons.cur_c = COL8_FFFFFF;
 			}
-			if (i == 3) {
+			if (i == 3) { // 커서 끄기
                 if (cons.sht != 0) {
 				    boxfill8(cons.sht->buf, cons.sht->bxsize, COL8_000000, cons.cur_x, cons.cur_y, cons.cur_x + cons.cur_width - 1, cons.cur_y + 15);
                 }
 				cons.cur_c = -1;
 			}
             if (i == 4) {
-                cmd_exit(&cons, fat);
+                cmd_exit(&cons, fat); // 콘솔 종료
             }
 			if (256 <= i && i <= 511) {
-				if (i == 8 + 256) {                         // backspace
+				if (i == 8 + 256) {                         // backspace: 지우기
 					if (cons.cur_x > 16) {
-						cons_putchar(&cons, ' ', 0);
-						cons.cur_x -= 8;
-                        if (task->langmode == 1) {
-                            cons.cur_x -= 8;
+						cons_putchar(&cons, ' ', 0);        // 공백 문자로 커서 지우기
+						cons.cur_x -= 8;                    // 커서 위치 이동
+                        if (task->langmode == 1) {          // 한글 모드인 경우
+                            cons.cur_x -= 8;                // 커서 위치 한 칸 더 이동
                         }
 					}
-				} else if (i == 10 + 256) {                  // enter
-                    cons_putchar(&cons, ' ', 0);
-					cmdline[cons.cur_x / 8 - 2] = 0;
-					cons_newline(&cons);
-                    cons_runcmd(cmdline, &cons, fat, memtotal); // execute command
-                    if (cons.sht == 0) {
-                        cmd_exit(&cons, fat);
+				} else if (i == 10 + 256) {                     // enter: 줄바꿈
+                    cons_putchar(&cons, ' ', 0);                // 커서 지우기
+					cmdline[cons.cur_x / 8 - 2] = 0;            // 명령어 라인 종료 문자
+					cons_newline(&cons);                        // 줄바꿈
+                    cons_runcmd(cmdline, &cons, fat, memtotal); // 명령어 실행
+                    if (cons.sht == 0) {                        // 콘솔 시트가 없으면
+                        cmd_exit(&cons, fat);                   // 콘솔 태스크 종료
                     }
-                    cons_putchar(&cons, '>', 1);
+                    cons_putchar(&cons, '>', 1);                // 프롬프트 출력
 				} else {
-                    // normal character
-                    if (task->langmode == 1) {
-                        int key = i - 256;
+                    // 일반 문자 입출력
+                    if (task->langmode == 1) {                  // 한글 모드
+                        int key = i - 256;                      // 입력된 키 값 (ASCII 코드)
                         if (cons.cur_x < 240) {
-                            hangul_automata(&cons, task, key);
+                            hangul_automata(&cons, task, key);  // 한글 오토마타가 처리
                         }
-                    } else {
+                    } else {                                        // 영어 모드
 					    if (cons.cur_x < 240) {
-						    cmdline[cons.cur_x / 8 - 2] = i - 256;
-						    cons_putchar(&cons, i - 256, 1);
+						    cmdline[cons.cur_x / 8 - 2] = i - 256;  // 명령어 라인에 문자 저장
+						    cons_putchar(&cons, i - 256, 1);        // 문자 출력
 					    }
                     }
 				}
 			}
+            // 커서 초기화
             if (cons.sht != 0) {
 			    if (cons.cur_c >= 0) {
 				    boxfill8(cons.sht->buf, cons.sht->bxsize, cons.cur_c, cons.cur_x, cons.cur_y, cons.cur_x + cons.cur_width - 1, cons.cur_y + 15);
@@ -131,31 +134,31 @@ void cons_putchar(struct CONSOLE *cons, int chr, char move)
     char s[2];
     s[0] = chr;
     s[1] = 0;
-    if (s[0] == 0x09) {
+    if (s[0] == 0x09) { // 탭 문자 처리
         for (;;) {
             if (cons->sht != 0) {
-                putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, " ", 1);
+                putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, " ", 1);   // 공백 출력
             }
-            cons->cur_x += 8;
+            cons->cur_x += 8;                                                                               // 커서 이동
             if (cons->cur_x == 8 + 240) {
-                cons_newline(cons);
+                cons_newline(cons);                                                                         // 줄바꿈
             }
-            if (((cons->cur_x - 8) & 0x1f) == 0) {
+            if (((cons->cur_x - 8) & 0x1f) == 0) {                                                          // 탭 간격(32픽셀) 도달했으면 break;
                 break;
             }
         }
-    } else if (s[0] == 0x0a) {
+    } else if (s[0] == 0x0a) { // 줄바꿈
         cons_newline(cons);
-    } else if (s[0] == 0x0d) {
+    } else if (s[0] == 0x0d) { // 뭐 없음
         // do nothing
     } else {
         if (cons->sht != 0) {
-            putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, s, 1);
+            putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, s, 1);        // 문자 출력
         }
-        if (move != 0) {
+        if (move != 0) { // 커서 이동
             cons->cur_x += 8;
             if (cons->cur_x == 8 + 240) {
-                cons_newline(cons);
+                cons_newline(cons); // 줄바꿈
             }
         }
     }

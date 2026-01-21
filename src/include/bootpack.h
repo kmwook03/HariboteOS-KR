@@ -300,6 +300,11 @@ int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 int *inthandler0c(int *esp);
 int *inthandler0d(int *esp);
 
+#define CONSOLE_WIDTH 256
+#define CONSOLE_HEIGHT 165
+#define CONSOLE_TBOX_WIDTH 240
+#define CONSOLE_TBOX_HEIGHT 128
+
 // file.c
 struct FILEINFO {
 	unsigned char name[8], ext[3], type;

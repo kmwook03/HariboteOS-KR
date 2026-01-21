@@ -425,10 +425,10 @@ struct SHEET *open_console(struct SHTCTL *shtctl, unsigned int memtotal)
 {
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct SHEET *sht = sheet_alloc(shtctl);
-	unsigned char *buf = (unsigned char *) memman_alloc_4k(memman, 256 * 165);	// 콘솔 버퍼 할당
-	sheet_setbuf(sht, buf, 256, 165, -1);										// 콘솔 시트 버퍼 설정
-	make_window8(buf, 256, 165, "console", 0);                                  // 콘솔 윈도우 그리기
-	make_textbox8(sht, 8, 28, 240, 128, COL8_000000);                           // 텍스트박스 영역 그리기
+	unsigned char *buf = (unsigned char *) memman_alloc_4k(memman, CONSOLE_WIDTH * CONSOLE_HEIGHT);	// 콘솔 버퍼 할당
+	sheet_setbuf(sht, buf, CONSOLE_WIDTH, CONSOLE_HEIGHT, -1);										// 콘솔 시트 버퍼 설정
+	make_window8(buf, CONSOLE_WIDTH, CONSOLE_HEIGHT, "console", 0);                                  // 콘솔 윈도우 그리기
+	make_textbox8(sht, 8, 28, CONSOLE_TBOX_WIDTH, CONSOLE_TBOX_HEIGHT, COL8_000000);                           // 텍스트박스 영역 그리기
 	sht->task = open_constask(sht, memtotal);                                   // 시트에 태스크 포인터 저장
 	sht->flags |= 0x20;                                                         // 커서 있음
 	return sht;
