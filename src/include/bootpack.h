@@ -238,6 +238,9 @@ struct TASK {
     struct FILEHANDLE *fhandle;         // file handle
     int *fat;                           // file allocation table
     char *cmdline;                      // command line
+    char langmode;                      // language mode (0: English, 1: Korean)
+    char hangul_state;
+    char hangul_idx[3];
 };
 
 struct TASKLEVEL {
@@ -271,7 +274,7 @@ void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c);
 // console.c
 struct CONSOLE {
     struct SHEET *sht;
-    int cur_x, cur_y, cur_c;
+    int cur_x, cur_y, cur_c, cur_width;
     struct TIMER *timer;
 };
 struct FILEHANDLE {
@@ -297,6 +300,11 @@ int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 int *inthandler0c(int *esp);
 int *inthandler0d(int *esp);
 
+#define CONSOLE_WIDTH 256
+#define CONSOLE_HEIGHT 165
+#define CONSOLE_TBOX_WIDTH 240
+#define CONSOLE_TBOX_HEIGHT 128
+
 // file.c
 struct FILEINFO {
 	unsigned char name[8], ext[3], type;
@@ -317,3 +325,13 @@ int tek_decomp(unsigned char *p, char *q, int size);
 struct TASK *open_constask(struct SHEET *sht, unsigned int memtotal);
 struct SHEET *open_console(struct SHTCTL *shtctl, unsigned int memtotal);
 
+// hangul.c
+void put_johab(struct SHEET *sht, int x, int y, char color, unsigned char *font, unsigned short code);
+unsigned short utf8_to_johab(unsigned char *s);
+void putstr_utf8(struct SHEET *sht, int x, int y, char color, unsigned char *s);
+int key2cho(char c);
+int key2jung(char c);
+int key2jong(char c);
+void unicode_to_utf8(unsigned short val, char *dest);
+void draw_composing_char(struct CONSOLE *cons, int x, int y, int cho, int jung, int jong);
+void hangul_automata(struct CONSOLE *cons, struct TASK *task, int key);

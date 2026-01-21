@@ -4,158 +4,239 @@
 #include <stdio.h>
 #include <string.h>
 
+// 콘솔 태스크 함수
+// 키보드 입력 및 명령어 처리 담당
+// 콘솔 시트 업데이트 및 커서 제어 포함
+// @param sht: 콘솔 시트 포인터
+// @param memtotal: 총 메모리 크기
+// @return: void
 void console_task(struct SHEET *sht, int memtotal)
 {
-    struct TASK *task = task_now();
-    struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
-    int i, *fat = (int *) memman_alloc_4k(memman, 4 * 2880);
-	struct CONSOLE cons;
-    struct FILEHANDLE fhandle[8];
-    char cmdline[30];
+    struct TASK *task = task_now();                                     // 현재 태스크 포인터 얻기
+    struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;              // 메모리 관리자 포인터
+    int i, *fat = (int *) memman_alloc_4k(memman, 4 * 2880);            // FAT 테이블용 메모리 할당
+	struct CONSOLE cons;                                                // 콘솔 구조체
+    struct FILEHANDLE fhandle[8];                                       // 파일 핸들 구조체 배열
+    char cmdline[30];                                                   // 명령어 입력 버퍼
 
+    // 콘솔 구조체 초기화
     cons.sht = sht;
     cons.cur_x = 8;
     cons.cur_y = 28;
     cons.cur_c = -1;
-    task->cons = &cons;
     task->cmdline = cmdline;
+    cons.cur_width = 8;
+    task->cons = &cons;
 
     if (cons.sht != 0) {
         cons.timer = timer_alloc();
         timer_init(cons.timer, &task->fifo, 1);
         timer_settime(cons.timer, 50);
     }
-    file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200));
+    file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200));      // FAT 테이블 읽기
     for (i=0; i<8; i++) {
-        fhandle[i].buf = 0; // mark as unused
+        fhandle[i].buf = 0; // 미사용
     }
-    task->fhandle = fhandle;
-    task->fat = fat;
+    task->fhandle = fhandle;        // 파일 핸들 배열 설정
+    task->fat = fat;                // FAT 테이블 설정
 
-    cons_putchar(&cons, '>', 1);
+    task->langmode = 0;             // 영어 모드로 시작
 
+    cons_putchar(&cons, '>', 1);    // 프롬프트 출력        
+
+    // 메인 루프
     for (;;) {
-        io_cli();
-        if (fifo32_status(&task->fifo) == 0) {
-            task_sleep(task);
-            io_sti();
-        } else {
-            i = fifo32_get(&task->fifo);
-            io_sti();
-            if (i <= 1 && cons.sht != 0) {
+        io_cli(); // 인터럽트 금지
+        if (fifo32_status(&task->fifo) == 0) {          // FIFO 버퍼가 비어있으면
+            task_sleep(task);                           //    태스크 슬립
+            io_sti();                                   //    인터럽트 허용
+        } else {                                        // FIFO 버퍼에 데이터가 있으면
+            i = fifo32_get(&task->fifo);                //    데이터 처리
+            io_sti();                                   //    인터럽트 허용    
+            if (i <= 1 && cons.sht != 0) { // 커서 깜빡임 처리
                 if (i != 0) {
-                    timer_init(cons.timer, &task->fifo, 0);
+                    timer_init(cons.timer, &task->fifo, 0); // 커서 ON
 					if (cons.cur_c >= 0) {
                     	cons.cur_c = COL8_FFFFFF;
 					}
                 } else {
-                    timer_init(cons.timer, &task->fifo, 1);
+                    timer_init(cons.timer, &task->fifo, 1); // 커서 OFF
 					if (cons.cur_c >= 0) {
                     	cons.cur_c = COL8_000000;
 					}
                 }
-                timer_settime(cons.timer, 50);
+                timer_settime(cons.timer, 50); // 0.5초 간격
             }
-			if (i == 2) {
+			if (i == 2) { // 커서 켜기
 				cons.cur_c = COL8_FFFFFF;
 			}
-			if (i == 3) {
+			if (i == 3) { // 커서 끄기
                 if (cons.sht != 0) {
-				    boxfill8(cons.sht->buf, cons.sht->bxsize, COL8_000000, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
+				    boxfill8(cons.sht->buf, cons.sht->bxsize, COL8_000000, cons.cur_x, cons.cur_y, cons.cur_x + cons.cur_width - 1, cons.cur_y + 15);
                 }
 				cons.cur_c = -1;
 			}
             if (i == 4) {
-                cmd_exit(&cons, fat);
+                cmd_exit(&cons, fat); // 콘솔 종료
             }
 			if (256 <= i && i <= 511) {
-				if (i == 8 + 256) {
+				if (i == 8 + 256) {                         // backspace: 지우기
 					if (cons.cur_x > 16) {
-						cons_putchar(&cons, ' ', 0);
-						cons.cur_x -= 8;
+						cons_putchar(&cons, ' ', 0);        // 공백 문자로 커서 지우기
+						cons.cur_x -= 8;                    // 커서 위치 이동
+                        if (task->langmode == 1) {          // 한글 모드인 경우
+                            cons.cur_x -= 8;                // 커서 위치 한 칸 더 이동
+                        }
 					}
-				} else if (i == 10 + 256) {
-					// enter
-                    cons_putchar(&cons, ' ', 0);
-					cmdline[cons.cur_x / 8 - 2] = 0;
-					cons_newline(&cons);
-                    cons_runcmd(cmdline, &cons, fat, memtotal); // execute command
-                    if (cons.sht == 0) {
-                        cmd_exit(&cons, fat);
+				} else if (i == 10 + 256) {                     // enter: 줄바꿈
+                    cons_putchar(&cons, ' ', 0);                // 커서 지우기
+					cmdline[cons.cur_x / 8 - 2] = 0;            // 명령어 라인 종료 문자
+					cons_newline(&cons);                        // 줄바꿈
+                    cons_runcmd(cmdline, &cons, fat, memtotal); // 명령어 실행
+                    if (cons.sht == 0) {                        // 콘솔 시트가 없으면
+                        cmd_exit(&cons, fat);                   // 콘솔 태스크 종료
                     }
-                    cons_putchar(&cons, '>', 1);
+                    cons_putchar(&cons, '>', 1);                // 프롬프트 출력
 				} else {
-                    // normal character
-					if (cons.cur_x < 240) {
-						cmdline[cons.cur_x / 8 - 2] = i - 256;
-						cons_putchar(&cons, i - 256, 1);
-					}
+                    // 일반 문자 입출력
+                    if (task->langmode == 1) {                  // 한글 모드
+                        int key = i - 256;                      // 입력된 키 값 (ASCII 코드)
+                        if (cons.cur_x < 240) {
+                            hangul_automata(&cons, task, key);  // 한글 오토마타가 처리
+                        }
+                    } else {                                        // 영어 모드
+					    if (cons.cur_x < 240) {
+						    cmdline[cons.cur_x / 8 - 2] = i - 256;  // 명령어 라인에 문자 저장
+						    cons_putchar(&cons, i - 256, 1);        // 문자 출력
+					    }
+                    }
 				}
 			}
+            // 커서 초기화
             if (cons.sht != 0) {
 			    if (cons.cur_c >= 0) {
-				    boxfill8(cons.sht->buf, cons.sht->bxsize, cons.cur_c, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
+				    boxfill8(cons.sht->buf, cons.sht->bxsize, cons.cur_c, cons.cur_x, cons.cur_y, cons.cur_x + cons.cur_width - 1, cons.cur_y + 15);
 			    }
-                sheet_refresh(cons.sht, cons.cur_x, cons.cur_y, cons.cur_x + 8, cons.cur_y + 16);
+                sheet_refresh(cons.sht, cons.cur_x, cons.cur_y, cons.cur_x + cons.cur_width, cons.cur_y + 16);
         
             }    
         }
     }
 }
 
+// 콘솔에 문자 출력
+// @param cons: 콘솔 구조체 포인터
+// @param chr: 출력할 문자
+// @param move: 커서 이동 여부 (0: 이동 안함, 1: 이동함)
+// @return: void
 void cons_putchar(struct CONSOLE *cons, int chr, char move)
 {
     char s[2];
     s[0] = chr;
     s[1] = 0;
-    if (s[0] == 0x09) {
+    if (s[0] == 0x09) { // 탭 문자 처리
         for (;;) {
             if (cons->sht != 0) {
-                putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, " ", 1);
+                putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, " ", 1);   // 공백 출력
             }
-            cons->cur_x += 8;
+            cons->cur_x += 8;                                                                               // 커서 이동
             if (cons->cur_x == 8 + 240) {
-                cons_newline(cons);
+                cons_newline(cons);                                                                         // 줄바꿈
             }
-            if (((cons->cur_x - 8) & 0x1f) == 0) {
+            if (((cons->cur_x - 8) & 0x1f) == 0) {                                                          // 탭 간격(32픽셀) 도달했으면 break;
                 break;
             }
         }
-    } else if (s[0] == 0x0a) {
+    } else if (s[0] == 0x0a) { // 줄바꿈
         cons_newline(cons);
-    } else if (s[0] == 0x0d) {
+    } else if (s[0] == 0x0d) { // 뭐 없음
         // do nothing
     } else {
         if (cons->sht != 0) {
-            putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, s, 1);
+            putfonts8_asc_sht(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, s, 1);        // 문자 출력
         }
-        if (move != 0) {
+        if (move != 0) { // 커서 이동
             cons->cur_x += 8;
             if (cons->cur_x == 8 + 240) {
-                cons_newline(cons);
+                cons_newline(cons); // 줄바꿈
             }
         }
     }
     return;
 }
 
+// 콘솔에 문자열 포인터 사용하여 출력
+// @param cons: 콘솔 구조체 포인터
+// @param s: 출력할 문자열 포인터
+// @return: void
 void cons_putstr0 (struct CONSOLE *cons, char *s)
 {
+    unsigned char *korean = (unsigned char *) *((int *) 0x0fe8);
+    unsigned short johab;
+    int code;
+
     for (; *s!=0; s++) {
-        cons_putchar(cons, *s, 1);
+        if ((*s & 0x80) == 0) { // ASCII
+            cons_putchar(cons, *s, 1);
+        } else if ((*s & 0xe0) == 0xe0) {
+            if (s[1] == 0 || s[2] == 0) break; // 문자열 끝 예외처리
+            johab = utf8_to_johab((unsigned char *) s);
+            if (johab != 0) {
+                // 한글 출력
+                if (cons->sht != 0) {
+                    put_johab(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, korean, johab);
+                    sheet_refresh(cons->sht, cons->cur_x, cons->cur_y, cons->cur_x + 16, cons->cur_y + 16);
+                }
+                cons->cur_x += 16;
+
+                if (cons->cur_x + 16 > cons->sht->bxsize) {
+                    cons_newline(cons);
+                }
+            }
+            s += 2; // 3바이트 문자이므로 포인터 2 증가
+        }
     }
     return;
 }
 
+// 콘솔에 문자열 포인터와 길이 사용하여 출력
+// @param cons: 콘솔 구조체 포인터
+// @param s: 출력할 문자열 포인터
+// @param l: 출력할 문자열 길이
+// @return: void
 void cons_putstr1(struct CONSOLE *cons, char *s, int l)
 {
+    unsigned char *korean = (unsigned char *) *((int *) 0x0fe8);
+    unsigned short johab;
     int i;
+
     for (i=0; i<l; i++) {
-        cons_putchar(cons, s[i], 1);
+        if ((s[i] & 0x80) == 0) { // ASCII
+            cons_putchar(cons, s[i], 1);
+        } else if ((s[i] & 0xe0) == 0xe0) {
+            if (s[i+1] == 0 || s[i+2] == 0) break; // 문자열 끝 예외처리
+            johab = utf8_to_johab((unsigned char *) &s[i]);
+            if (johab != 0) {
+                // 한글 출력
+                if (cons->sht != 0) {
+                    put_johab(cons->sht, cons->cur_x, cons->cur_y, COL8_FFFFFF, korean, johab);
+                    sheet_refresh(cons->sht, cons->cur_x, cons->cur_y, cons->cur_x + 16, cons->cur_y + 16);
+                }
+                cons->cur_x += 16;
+
+                if (cons->cur_x + 16 > cons->sht->bxsize) {
+                    cons_newline(cons);
+                }
+            }
+            i += 2; // 3바이트 문자이므로 인덱스 2 증가
+        }
     }
     return;
 }
 
+// 콘솔 줄바꿈 처리 함수
+// @param cons: 콘솔 구조체 포인터
+// @return: void
 void cons_newline(struct CONSOLE *cons)
 {
 	int x, y;
@@ -183,6 +264,12 @@ void cons_newline(struct CONSOLE *cons)
 	return;
 }
 
+// 콘솔 명령어 실행 함수
+// @param cmdline: 명령어 문자열
+// @param cons: 콘솔 구조체 포인터
+// @param fat: FAT 테이블 포인터
+// @param memtotal: 총 메모리 크기
+// @return: void
 void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal)
 {
     if (strcmp(cmdline, "mem") == 0 && cons->sht != 0) {
@@ -197,6 +284,8 @@ void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal)
         cmd_start(cons, cmdline, memtotal);
     } else if (strncmp(cmdline, "ncst ", 5) == 0) {
         cmd_ncst(cons, cmdline, memtotal);
+    } else if (strncmp(cmdline, "langmode ", 9) == 0) {
+        cmd_langmode(cons, cmdline);
     } else if (cmdline[0] != 0) {			
         if (cmd_app(cons, fat, cmdline) == 0) {			
             cons_putstr0(cons, "Bad command.\n\n");
@@ -205,6 +294,10 @@ void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal)
     return;
 }
 
+// mem command (메모리 사용량 표시)
+// @param cons: 콘솔 구조체 포인터
+// @param memtotal: 총 메모리 크기
+// @return: void
 void cmd_mem(struct CONSOLE *cons, int memtotal)
 {
     // mem command
@@ -215,6 +308,9 @@ void cmd_mem(struct CONSOLE *cons, int memtotal)
     return;
 }
 
+// cls/clear command (콘솔 화면 지우기)
+// @param cons: 콘솔 구조체 포인터
+// @return: void
 void cmd_cls(struct CONSOLE *cons)
 {
     // cls/clear command
@@ -230,6 +326,9 @@ void cmd_cls(struct CONSOLE *cons)
     return;
 }
 
+// dir/ls command (디렉토리 목록 표시)
+// @param cons: 콘솔 구조체 포인터
+// @return: void
 void cmd_dir(struct CONSOLE *cons)
 {
     // dir/ls command
@@ -257,6 +356,10 @@ void cmd_dir(struct CONSOLE *cons)
     return;
 }
 
+// exit command (콘솔 종료 및 태스크 종료)
+// @param cons: 콘솔 구조체 포인터
+// @param fat: FAT 테이블 포인터
+// @return: void
 void cmd_exit(struct CONSOLE *cons, int *fat)
 {
     struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
@@ -279,6 +382,11 @@ void cmd_exit(struct CONSOLE *cons, int *fat)
     }
 }
 
+// start command (새 콘솔 생성 후 앱 실행)
+// @param cons: 콘솔 구조체 포인터
+// @param cmdline: 명령어 문자열
+// @param memtotal: 총 메모리 크기
+// @return: void
 void cmd_start(struct CONSOLE *cons, char *cmdline, int memtotal)
 {
 	struct SHTCTL *shtctl = (struct SHTCTL *) *((int *) 0x0fe4);
@@ -295,6 +403,11 @@ void cmd_start(struct CONSOLE *cons, char *cmdline, int memtotal)
 	return;
 }
 
+// ncst command (새 콘솔 생성 후 명령어 실행)
+// @param cons: 콘솔 구조체 포인터
+// @param cmdline: 명령어 문자열
+// @param memtotal: 총 메모리 크기
+// @return: void
 void cmd_ncst(struct CONSOLE *cons, char *cmdline, int memtotal)
 {
 	struct TASK *task = open_constask(0, memtotal);
@@ -308,6 +421,36 @@ void cmd_ncst(struct CONSOLE *cons, char *cmdline, int memtotal)
 	return;
 }
 
+// langmode command (언어 모드 설정)
+// @param cons: 콘솔 구조체 포인터
+// @param cmdline: 명령어 문자열
+// @return: void
+void cmd_langmode(struct CONSOLE *cons, char *cmdline)
+{
+    struct TASK *task = task_now();
+    unsigned char mode = cmdline[9] - '0';
+    int i;
+    if (mode <= 1) {
+        task->langmode = mode;
+        task->hangul_state = 0;
+        for(i=0; i<3; i++) task->hangul_idx[i] = -1;
+        if (mode == 0) {
+            cons_putstr0(cons, "[English]\n");
+        } else {
+            cons_putstr0(cons, "[Korean]\n");
+        }
+    } else {
+        cons_putstr0(cons, "langmode command error. (0: English, 1: Korean)\n");
+    }
+    cons_newline(cons);
+    return;
+}
+
+// 앱 실행 함수
+// @param cons: 콘솔 구조체 포인터
+// @param fat: FAT 테이블 포인터
+// @param cmdline: 명령어 문자열
+// @return: 성공 시 1, 실패 시 0
 int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline)
 {
     struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
@@ -380,6 +523,9 @@ int cmd_app(struct CONSOLE *cons, int *fat, char *cmdline)
     return 0;
 }
 
+// 하리보테 API 함수
+// @param edi, esi, ebp, esp, ebx, edx, ecx, eax: 레지스터 값
+// @return: eax 레지스터 값 포인터
 int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax)
 {
     struct TASK *task = task_now();
@@ -591,6 +737,12 @@ int *hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
     return 0;
 }
 
+// 하리보테 API의 선 그리기 함수
+// @param sht: 그릴 시트 포인터
+// @param x0, y0: 시작 좌표
+// @param x1, y1: 끝 좌표
+// @param col: 선 색상
+// @return: void
 void hrb_api_linewin(struct SHEET *sht, int x0, int y0, int x1, int y1, int col)
 {
     int i, x, y, len, dx, dy;
@@ -635,6 +787,9 @@ void hrb_api_linewin(struct SHEET *sht, int x0, int y0, int x1, int y1, int col)
     return;
 }
 
+// INT 0C 핸들러 (스택 예외)
+// @param esp: 스택 포인터
+// @return: 새로운 스택 포인터
 int *inthandler0c(int *esp) {
     struct TASK *task = task_now();
     struct CONSOLE *cons = task->cons;
@@ -645,6 +800,9 @@ int *inthandler0c(int *esp) {
     return &(task->tss.esp0); // ABEND
 }
 
+// INT 0D 핸들러 (일반 보호 예외)
+// @param esp: 스택 포인터
+// @return: 새로운 스택 포인터 
 int *inthandler0d(int *esp)
 {
     struct TASK *task = task_now();

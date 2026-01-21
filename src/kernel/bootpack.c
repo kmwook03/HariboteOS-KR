@@ -84,12 +84,14 @@ void HariMain(void)
 	fifo.task = task_a;														// FIFO 버퍼에 메인 태스크 설정
     task_run(task_a, 1, 2);													// 메인 태스크 실행
 	*((int *) 0x0fe4) = (int) shtctl;										// shtctl 주소 저장 (0x0fe4)
+	task_a->langmode = 0;													// 메인 태스크는 영어 모드로 시작
 
     // 배경 시트 그리기
 	sht_back  = sheet_alloc(shtctl);														// 배경 시트 할당
     buf_back  = (unsigned char *) memman_alloc_4k(memman, binfo->scrnx * binfo->scrny);		// 배경 버퍼 할당
     sheet_setbuf(sht_back, buf_back, binfo->scrnx, binfo->scrny, -1);						// 배경 시트 버퍼 설정
     init_screen8(buf_back, binfo->scrnx, binfo->scrny);                                     // 배경 화면 초기화
+
 
     // 콘솔 시트 그리기
 	key_win = open_console(shtctl, memtotal);												// 첫 번째 콘솔 창 열기
@@ -116,6 +118,47 @@ void HariMain(void)
 
 	fifo32_put(&keycmd, KEYCMD_LED);										// 키보드 LED 명령
 	fifo32_put(&keycmd, key_leds);											// 현재 LED 상태 전송
+
+	int *fat;
+	unsigned char *korean;
+	struct FILEINFO *finfo;
+	extern char hankaku[4096];
+	
+	korean = (unsigned char *) memman_alloc_4k(memman, 12*1024);							// 한글 폰트용 메모리 할당 (12KB)
+	fat = (int *) memman_alloc_4k(memman, 4 * 2880); 										// FAT 테이블용 메모리 할당
+	file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200));							// FAT 테이블 읽기
+	finfo = file_search("H04     FNT", (struct FILEINFO *) (ADR_DISKIMG + 0x002600), 224);		// 한글 폰트 파일 검색
+
+	if (finfo != 0) {
+		file_loadfile(finfo->clustno, finfo->size, korean, fat, (char *) (ADR_DISKIMG + 0x003e00));
+	} else {
+		for (i=0; i<4096; i++) {
+			korean[i] = hankaku[i];	
+		}
+	}
+	*((int *) 0x0fe8) = (int) korean;														// 한글 폰트 주소 저장 (0x0fe8)
+	memman_free_4k(memman, (int) fat, 4*2880);
+
+	// 폰트 주소 가져오기
+	unsigned char *korean_font = (unsigned char *) *((int *) 0x0fe8);
+
+	// 테스트 1: "가" (조합형 코드 0x8861)
+	put_johab(sht_back, 100, 100, COL8_FFFFFF, korean_font, 0x8861);
+	// 테스트 2: "나" (조합형 코드 0x9061)
+	put_johab(sht_back, 120, 100, COL8_FFFFFF, korean_font, 0x9061);
+	// 테스트 3: "다" (조합형 코드 0x9461)
+	put_johab(sht_back, 140, 100, COL8_FFFFFF, korean_font, 0x9461);
+	// 테스트 4: "한" (조합형 코드 0xd065)
+	put_johab(sht_back, 100, 120, COL8_FFFFFF, korean_font, 0xd065);
+	// 테스트 5: "글" (조합형 코드 0x8b69)
+	put_johab(sht_back, 120, 120, COL8_FFFFFF, korean_font, 0x8b69);
+	// 테스트 6: "좋" (조합형 코드 0xb9bd)
+	put_johab(sht_back, 140, 120, COL8_FFFFFF, korean_font, 0xb9bd);
+	// 테스트 7: "아" (조합형 코드 0xb461)
+	put_johab(sht_back, 160, 120, COL8_FFFFFF, korean_font, 0xb461);
+	char ks[40];
+	sprintf(ks, "한글출력성공!!");
+	putstr_utf8(sht_back, 100, 140, COL8_FFFFFF, (unsigned char *) ks);
 
 	// 메인 루프
 	for (;;) {
@@ -382,10 +425,10 @@ struct SHEET *open_console(struct SHTCTL *shtctl, unsigned int memtotal)
 {
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct SHEET *sht = sheet_alloc(shtctl);
-	unsigned char *buf = (unsigned char *) memman_alloc_4k(memman, 256 * 165);	// 콘솔 버퍼 할당
-	sheet_setbuf(sht, buf, 256, 165, -1);										// 콘솔 시트 버퍼 설정
-	make_window8(buf, 256, 165, "console", 0);                                  // 콘솔 윈도우 그리기
-	make_textbox8(sht, 8, 28, 240, 128, COL8_000000);                           // 텍스트박스 영역 그리기
+	unsigned char *buf = (unsigned char *) memman_alloc_4k(memman, CONSOLE_WIDTH * CONSOLE_HEIGHT);	// 콘솔 버퍼 할당
+	sheet_setbuf(sht, buf, CONSOLE_WIDTH, CONSOLE_HEIGHT, -1);										// 콘솔 시트 버퍼 설정
+	make_window8(buf, CONSOLE_WIDTH, CONSOLE_HEIGHT, "console", 0);                                  // 콘솔 윈도우 그리기
+	make_textbox8(sht, 8, 28, CONSOLE_TBOX_WIDTH, CONSOLE_TBOX_HEIGHT, COL8_000000);                           // 텍스트박스 영역 그리기
 	sht->task = open_constask(sht, memtotal);                                   // 시트에 태스크 포인터 저장
 	sht->flags |= 0x20;                                                         // 커서 있음
 	return sht;
