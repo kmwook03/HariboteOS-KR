@@ -323,6 +323,35 @@ void draw_composing_char(struct CONSOLE *cons, int x, int y, int cho, int jung, 
     return;
 }
 
+// 중성 합성 함수
+// 지금 조합이 합성 가능한 중성인지 확인(ㅢ, ㅘ, ㅚ, ㅙ, ㅟ, ㅝ, ㅞ)
+// @param jung1: 첫 번째 중성 인덱스
+// @param jung2: 두 번째 중성 인덱스
+// @return: 합성된 중성 인덱스, 불가능하면 -1
+int get_composite_jung(int jung1, int jung2)
+{
+    // 'ㅗ'(8) 계열
+    if (jung1 == 8) {
+        if (jung2 == 0) return 9;       // ㅗ + ㅏ = ㅘ
+        if (jung2 == 1) return 10;      // ㅗ + ㅐ = ㅙ
+        if (jung2 == 20) return 11;     // ㅗ + ㅣ = ㅚ
+    }
+
+    // 'ㅜ'(13) 계열
+    if (jung1 == 13) {
+        if (jung2 == 4) return 14;      // ㅜ + ㅓ = ㅝ
+        if (jung2 == 5) return 15;      // ㅜ + ㅔ = ㅞ
+        if (jung2 == 20) return 16;     // ㅜ + ㅣ = ㅟ
+    }
+
+    // 'ㅡ'(18) 계열
+    if (jung1 == 18) {
+        if (jung2 == 20) return 19;     // ㅡ + ㅣ = ㅢ
+    }
+
+    return -1; // 합성 불가
+}
+
 // 한글 오토마타 함수
 // @param cons: 콘솔 구조체 포인터
 // @param task: 현재 작업 구조체 포인터
@@ -397,8 +426,15 @@ void hangul_automata(struct CONSOLE *cons, struct TASK *task, int key)
                 draw_composing_char(cons, cons->cur_x - 16, cons->cur_y, task->hangul_idx[0], task->hangul_idx[1], idx_jong);
             } else if (idx_jung != -1) {
                 // 모음 입력 -> 앞 글자 확정 후 새 글자 시작
-                task->hangul_state = 0;
-                hangul_automata(cons, task, key);
+                int complex = get_composite_jung(task->hangul_idx[1], idx_jung);
+
+                if (complex != -1) {
+                    task->hangul_idx[1] = complex;
+                    draw_composing_char(cons, cons->cur_x - 16, cons->cur_y, task->hangul_idx[0], task->hangul_idx[1], -1);
+                } else {
+                    task->hangul_state = 0;
+                    hangul_automata(cons, task, key);
+                }
             } else {
                 // 한글 아님 -> 앞 글자 확정 후 새 글자 시작
                 task->hangul_state = 0;

@@ -157,7 +157,7 @@ void HariMain(void)
 	// 테스트 7: "아" (조합형 코드 0xb461)
 	put_johab(sht_back, 160, 120, COL8_FFFFFF, korean_font, 0xb461);
 	char ks[40];
-	sprintf(ks, "한글 출력 성공!!");
+	sprintf(ks, "한글출력성공!!");
 	putstr_utf8(sht_back, 100, 140, COL8_FFFFFF, (unsigned char *) ks);
 
 	// 메인 루프
