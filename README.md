@@ -36,10 +36,11 @@
     - 32 비트 FIFO 버퍼를 통해 메모리 관리 및 태스크 간 통신 구현
 - **Mouse/Keyboard Control**
     - PS/2 사양의 마우스와 키보드 인터럽트 처리 구현
-- **Multitasking**
+- **Multitasking & CPU Scheduling**
     - TSS를 사용한 멀티태스킹 구현
+    - MLQ 스케줄링 구현
 - **API**
-    - 앱에서 사용 가능한 API 구현
+    - 시스템 콜 구현
 - **LDT**
     - LDT(Local Descriptor Table)를 통한 메모리 보호 구현
 - **FILE API**

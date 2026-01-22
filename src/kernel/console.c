@@ -101,7 +101,7 @@ void console_task(struct SHEET *sht, int memtotal)
                         }
 					}
 				} else if (i == 10 + 256) {                     // enter: 줄바꿈
-                    initialize_hangul(task);          // 한글 오토마타 초기화
+                    initialize_hangul(task);                    // 한글 오토마타 초기화
                     cons_putchar(&cons, ' ', 0);                // 커서 지우기
 					cmdline[cons.cur_x / 8 - 2] = 0;            // 명령어 라인 종료 문자
 					cons_newline(&cons);                        // 줄바꿈
