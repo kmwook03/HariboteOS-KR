@@ -298,8 +298,6 @@ struct FILEHANDLE {
 void console_task(struct SHEET *sht, int memtotal, int langmode);
 void cons_putchar(struct CONSOLE *cons, int chr, char move);
 void cons_put_utf8(struct CONSOLE *cons, char *s, int len, char move);
-void cons_putstr0 (struct CONSOLE *cons, char *s);
-void cons_putstr1(struct CONSOLE *cons, char *s, int l);
 void cons_newline(struct CONSOLE *cons);
 void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, int memtotal);
 void cmd_mem(struct CONSOLE *cons, int memtotal);
@@ -340,3 +338,4 @@ int tek_decomp(unsigned char *p, char *q, int size);
 // bootpack.c
 struct TASK *open_constask(struct SHEET *sht, unsigned int memtotal, int langmode);
 struct SHEET *open_console(struct SHTCTL *shtctl, unsigned int memtotal, int langmode);
+
