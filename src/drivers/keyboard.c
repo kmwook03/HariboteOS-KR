@@ -1,4 +1,5 @@
 // keyboard controller implementation
+#include "../include/asmfunc.h"
 #include "../include/bootpack.h"
 
 struct FIFO32 *keyfifo;

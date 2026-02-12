@@ -2,6 +2,7 @@
 
 #include "../include/bootpack.h"
 #include "../include/utf8.h"
+#include "../include/fd.h"
 #include <stdio.h>
 
 #define KEYCMD_LED		0xed
@@ -48,7 +49,7 @@ void HariMain(void)
 	// 4. Key Tables
 	static char keytable0[0x80] = {
 		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0x08, 0,
-		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0x0a, 0, 'A', 'S',
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0x0a, 0x1D, 'A', 'S',
 		'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',   0,   '\\', 'Z', 'X', 'C', 'V',
 		'B', 'N', 'M', ',', '.', '/', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
 		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
@@ -58,7 +59,7 @@ void HariMain(void)
 	};
 	static char keytable1[0x80] = {
 		0,   0,   '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 0x08, 0,
-		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 0x0a, 0, 'A', 'S',
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 0x0a, 0x1D, 'A', 'S',
 		'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',   0,   '|', 'Z', 'X', 'C', 'V',
 		'B', 'N', 'M', '<', '>', '?', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
 		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
@@ -74,10 +75,12 @@ void HariMain(void)
 	fifo32_init(&fifo, 128, fifobuf, 0); 									// FIFO buffer 초기화
 	*((int *) 0x0fec) = (int) &fifo;										// FIFO 주소 (0x0fec)
 	init_pit(); 															// PIT 초기화
+	io_out8(PIC0_IMR, io_in8(PIC0_IMR) & 0xbf);
+	init_fdc(); 															// FDC 초기화
 
 	init_keyboard(&fifo, 256); 											    // 키보드 초기화
 	enable_mouse(&fifo, 512, &mdec); 										// 마우스 활성화
-	io_out8(PIC0_IMR, 0xf8); 												// PIT, PIC1, 키보드 허용(11111000)
+	io_out8(PIC0_IMR, 0xb8); 												// PIT, PIC1, 키보드, FDC 허용(10111000)
 	io_out8(PIC1_IMR, 0xef); 												// 마우스 허용(11101111)
 	fifo32_init(&keycmd, 32, keycmd_buf, 0); 								// 키보드 명령 FIFO 버퍼
 
@@ -219,13 +222,14 @@ void HariMain(void)
                     fifo32_put(&key_win->task->fifo, s[0] + 256);
                 }
 				if (i == 256 + 0x0f && key_win != 0) { // tab 키 눌림
-					keywin_off(key_win);
-					j = key_win->height - 1;
-					if (j == 0) {
-						j = shtctl->top - 1;
-					}
-					key_win = shtctl->sheets[j];
-					keywin_on(key_win);
+					// keywin_off(key_win);
+					// j = key_win->height - 1;
+					// if (j == 0) {
+					// 	j = shtctl->top - 1;
+					// }
+					// key_win = shtctl->sheets[j];
+					// keywin_on(key_win);
+					fifo32_put(&key_win->task->fifo, 0xFE + 256);
 				}
 				if (i == 256 + 0x2a) { // left shift 눌림
 					key_shift |= 1;
@@ -260,8 +264,8 @@ void HariMain(void)
 					fifo32_put(&keycmd, KEYCMD_LED);
 					fifo32_put(&keycmd, key_leds);
 				}
-				if (i == 256 + 0x3b && key_win != 0) {
-					fifo32_put(&key_win->task->fifo, i); // F1 눌림
+				if (i == 256 + 0x39 && key_shift != 0) {
+					fifo32_put(&key_win->task->fifo, 256 + 0xFF); // Shift + Space 가상 제어 문자
 				}
 				if (i == 256 + 0x57) { // F11 눌림
 					sheet_updown(shtctl->sheets[1], shtctl->top - 1); // 콘솔을 제일 위로 가져옴(마우스 바로 아래)
